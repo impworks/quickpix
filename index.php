@@ -7,7 +7,7 @@
 // ------------------------------------
 
 define('ITEMS_IN_ROW', 4);
-define('ROOT_DIR', 'photos');
+define('ROOT_DIR', '/');
 define('TITLE', 'QuickPix');
 
 class qp
@@ -70,7 +70,7 @@ class qp
     {
         $pieces = explode("/", $query);
         $folder = $this->all_dirs;
-        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . '/' . ROOT_DIR . '/">' . TITLE . '</a>';
+        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . '/">' . TITLE . '</a>';
         $path = '';
         for ($idx = 0; $idx < count($pieces); $idx++)
         {
@@ -82,7 +82,7 @@ class qp
                 if (!strcasecmp($val[0], $pieces[$idx]))
                 {
                     $path .= '/' . $val[0];
-                    $crumb .= ' &raquo; <a href="http://' . $_SERVER['HTTP_HOST'] . '/' . ROOT_DIR . $path . '/">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . '</a>';
+                    $crumb .= ' &raquo; <a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . '</a>';
                     $folder = $val[3];
                     break;
                 }
@@ -92,10 +92,10 @@ class qp
         return $crumb;
     }
 
-    function make_pic($size, $file)
+    function make_pic($size, $src, $dest)
     {
-        list($x, $y) = getimagesize($file);
-        $img = imagecreatefromjpeg($file);
+        list($x, $y) = getimagesize($src);
+        $img = imagecreatefromjpeg($src);
 
         // detect size
         if ($x > $y)
@@ -109,14 +109,9 @@ class qp
             $newx = $x * $size / $y;
         }
 
-        if ($size == 640)
-            $output = str_replace('.jpg', '.m', $file);
-        else
-            $output = str_replace('.jpg', '.s', $file);
-
         $imgdest = imagecreatetruecolor($newx, $newy);
         imagecopyresampled($imgdest, $img, 0, 0, 0, 0, $newx, $newy, $x, $y);
-        imagejpeg($imgdest, $output);
+        imagejpeg($imgdest, $dest);
     }
 
     function qp_zip($query)
@@ -127,7 +122,8 @@ class qp
             return '<div class="errormsg">Directory not found!</div>';
 
         $folder = $matches['folder'] . '/';
-        $foldername = pathinfo($folder)['basename'];
+        $folderinfo = pathinfo($folder);
+        $foldername = $folderinfo['basename'];
 
         if (is_dir($folder))
         {
@@ -264,7 +260,7 @@ class qp
                     $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
 
                     if ($curr < $items)
-                        $return .= '<a href="' . $dir[0] . '/"><div class="folder">' . $dir[1] . '</div><br>' . (trim($dir[2]) ? $dir[2] : $dir[0]) . '</a>';
+                        $return .= '<div class="folder">' . ($dir[1] ? '<a href="' . $dir[0] . '/">' . $dir[1] . '</a>' : '') . '</div><br><a href="' . $dir[0] . '/">' . (trim($dir[2]) ? $dir[2] : $dir[0]) . '</a>';
 
                     $return .= '</td>';
 
@@ -286,7 +282,8 @@ class qp
         {
             if ($this->dirs) $return .= '<br><br>';
 
-            $dirname = pathinfo($query)['basename'];
+            $dirinfo = pathinfo($query);
+            $dirname = $dirinfo['basename'];
 
             $return .= '
           <div class="block">
@@ -338,16 +335,18 @@ class qp
 
     function qp_view($query)
     {
-        $query = str_replace(".view", ".jpg", $query);
+        $file = $this->fix_case(str_replace(".view", ".jpg", $query));
 
-        if (!file_exists($query))
+        if (!file_exists($file))
             return '<div class="errormsg">File does not exist!</div>';
 
-        $return = '';
-        $folder = preg_replace('/(.*)\/(.*?)\.jpg$/im', '\1', $query);
-        $filename = preg_replace('/(.*)\/(.*?)\.jpg$/im', '\2', $query);
+        $matches = array();
+        preg_match('/(?<folder>.*)\/(?<file>.*?)\.jpg$/im', $file, $matches);
+        $folder = $matches['folder'];
+        $filename = $matches['file'];
         $this->scan_files($folder);
 
+        $return = '';
         for ($idx = 0; $idx < count($this->files); $idx++)
         {
             $curr = $this->files[$idx];
@@ -372,7 +371,7 @@ class qp
       </tr>
       <tr>
         <td class="text cell" align="center" valign="center"><br>
-          <a href="' . $filename . '.jpg"><img src="' . $filename . '.m" border="0" title="View full picture"></a><br><br>
+          <a href="' . $this->fix_case($query) . '"><img src="' . $filename . '.m" border="0" title="View full picture"></a><br><br>
           <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
             <tr>
               <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . $prev . '.jpg</a></nobr>' : '&nbsp;') . '</td>
@@ -390,23 +389,27 @@ class qp
 
     function qp_med($query)
     {
-        if (!file_exists($query))
-            $this->make_pic(640, str_replace('.m', '.jpg', $query));
+        $dest = $this->fix_case($query);
+        $src = $this->fix_case(str_replace('.m', '.jpg', $query));
+        if (!file_exists($dest))
+            $this->make_pic(640, $src, $dest);
 
-        return $this->qp_file_generic($query);
+        return $this->qp_file_generic($dest);
     }
 
     function qp_small($query)
     {
-        if (!file_exists($query))
-            $this->make_pic(120, str_replace('.s', '.jpg', $query));
+        $dest = $this->fix_case($query);
+        $src = $this->fix_case(str_replace('.s', '.jpg', $query));
+        if (!file_exists($dest))
+            $this->make_pic(120, $src, $dest);
 
-        return $this->qp_file_generic($query);
+        return $this->qp_file_generic($dest);
     }
 
     function qp_file_generic($file)
     {
-        if (file_exists('./' . $file))
+        if (!file_exists($file))
             return '<div class="errormsg">File does not exist!</div>';
 
         header("Content-Type: image/jpeg");
@@ -497,7 +500,7 @@ class qp
         {
             foreach ($data as $nm => $val)
             {
-                echo '<div class="pck-header pck-' . ($data == $this->all_dirs ? '' : 'sub') . 'branch"><div class="pck-menu">' . ($val[1] > 0 ? $val[1] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/photos/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
+                echo '<div class="pck-header pck-' . ($data == $this->all_dirs ? '' : 'sub') . 'branch"><div class="pck-menu">' . ($val[1] > 0 ? $val[1] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
                 if (is_array($val[3]))
                 {
                     echo '<div class="pck-sub pck-hidden">';
@@ -510,6 +513,21 @@ class qp
         {
             echo '<div class="errormsg">Directory is empty!</div>';
         }
+    }
+
+    function fix_case($path)
+    {
+        $info = pathinfo($path);
+        $base = $info['dirname'];
+        $files = scandir($base);
+        foreach($files as $file)
+        {
+            $curr = $base . '/' . $file;
+            if(strcasecmp($curr, $path) == 0)
+                return $curr;
+        }
+
+        return $path;
     }
 
     // output
@@ -674,6 +692,24 @@ class qp
         border-collapse: collapse;
         background-color: #ECE9D8;
         margin: 16px;
+      }
+
+      .folder
+      {
+        width: 120px;
+        height: 120px;
+        padding-top: 10px;
+        border: 2px #CCCCCC solid;
+        text-align: center;
+        font-weight: bold;
+        font-size: 24pt;
+        color: #CCCCCC;
+      }
+
+      .folder a
+      {
+        color: #CCCCCC;
+        text-decoration: none;
       }
 
     </style>
