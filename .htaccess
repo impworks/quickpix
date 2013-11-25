@@ -1,0 +1,12 @@
+Options -Indexes
+
+AddType image/jpeg .s
+AddType image/jpeg .m
+
+RewriteEngine On
+RewriteBase /photos
+
+RewriteRule ^(.*?)(\.(dirs|files))$ index.php?$1
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)(?<!\.jpg)$ index.php?$1
