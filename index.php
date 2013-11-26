@@ -6,11 +6,43 @@
 // https://github.com/impworks/quickpix
 // ------------------------------------
 
+/**
+ * Number of picture thumbnails or folders in a row.
+ */
 define('ITEMS_IN_ROW', 4);
+
+/**
+ * The root directory of your gallery relative to server's root path.
+ * For example, if your website is http://www.example.com and the gallery is at http://www.example.com/my/gallery,
+ * the ROOT_DIR must be set to /my/gallery
+ */
 define('ROOT_DIR', '/');
+
+/**
+ * The caption of your gallery.
+ * Displayed in <title> tag and breadcrumb root.
+ */
 define('TITLE', 'QuickPix');
+
+/**
+ * Checks if automatic folder data refresh can be performed by opening /foldername/.update.
+ * Default = true.
+ * Can be disabled in case of malicious requests.
+ */
 define('ALLOW_UPDATE', true);
+
+/**
+ * Checks if all generated cache files (thumbnails, archives, etc.) can be removed by opening /foldername/.clear.
+ * Default = true.
+ * Can be disabled in case of malicious requests.
+ */
 define('ALLOW_CLEAR', true);
+
+/**
+ * Checks if users are allowed to download entire directories as zip archives.
+ * Zip archive is cached, therefore it requires additional space.
+ * Default = true.
+ */
 define('ALLOW_ZIP', true);
 
 class qp
@@ -20,7 +52,12 @@ class qp
     private $all_dirs;
     private $setup;
 
-    // load directory file
+    /**
+     * Loads data from a pre-cached .dirs file.
+     *
+     * @param $from string Path to directory.
+     * @param $data array Referenced array to store data in.
+     */
     function load_dirs($from, &$data)
     {
         $file = $from . "/.dirs";
@@ -37,7 +74,9 @@ class qp
         }
     }
 
-    // determine mode
+    /**
+     * Dispatcher method that detects mode depending on query.
+     */
     function determine_mode()
     {
         $q = $_SERVER['REDIRECT_QUERY_STRING'];
@@ -69,6 +108,12 @@ class qp
         $this->setup = array('mode' => 'qp_' . $mode, 'query' => $q);
     }
 
+    /**
+     * Generates breadcrumb HTML code string for current folder and/or path.
+     *
+     * @param $query string Current query.
+     * @return string HTML code.
+     */
     function breadcrumb($query)
     {
         $pieces = explode("/", $query);
@@ -95,6 +140,13 @@ class qp
         return $crumb;
     }
 
+    /**
+     * Creates a preview image and stores it on the disk.
+     * The preview image is proportionally resized to fit into a 640x640 px square.
+     *
+     * @param $src string Path to source image.
+     * @param $dest string Path to destination image.
+     */
     function make_preview($src, $dest)
     {
         $size = 640;
@@ -118,6 +170,13 @@ class qp
         imagejpeg($imgdest, $dest);
     }
 
+    /**
+     * Creates a thumbnail image and stores it on the disk.
+     * The thumbnail image is a 120x120 square cropped in the center of the original image.
+     *
+     * @param $src string Path to source image.
+     * @param $dest string Path to destination image.
+     */
     function make_thumb($src, $dest)
     {
         $size = 120;
@@ -142,6 +201,13 @@ class qp
         imagejpeg($imgdest, $dest);
     }
 
+    /**
+     * Creates a zip archive with all files in the current directory.
+     * Does not include subdirectories.
+     *
+     * @param $query string Path to archive.
+     * @return mixed Error message or zip archive to download.
+     */
     function qp_zip($query)
     {
         $matches = array ();
@@ -175,6 +241,11 @@ class qp
         }
     }
 
+    /**
+     * Updates the subfolder & file cache for a directory in case its content has been modified.
+     *
+     * @param $query Path to directory.
+     */
     function qp_update($query)
     {
         if(!ALLOW_UPDATE)
@@ -264,6 +335,12 @@ class qp
         header("Location: .");
     }
 
+    /**
+     * Displays directory content.
+     *
+     * @param $query string Path to directory.
+     * @return string HTML code to output.
+     */
     function qp_dir($query)
     {
         if (!is_dir($query))
@@ -373,6 +450,12 @@ class qp
         return $return;
     }
 
+    /**
+     * Displays single file preview.
+     *
+     * @param $query string Path to file.
+     * @return string HTML code to output.
+     */
     function qp_view($query)
     {
         $file = $this->get_filename($query);
@@ -427,6 +510,12 @@ class qp
         return $return;
     }
 
+    /**
+     * Creates a preview and outputs it to the browser.
+     *
+     * @param $query string Path to image.
+     * @return string Error message.
+     */
     function qp_med($query)
     {
         $src = $this->get_filename($query);
@@ -436,6 +525,12 @@ class qp
         return $this->qp_file_generic($query);
     }
 
+    /**
+     * Creates a thumbnail and outputs it to the browser.
+     *
+     * @param $query string Path to image.
+     * @return string Error message.
+     */
     function qp_small($query)
     {
         $src = $this->get_filename($query);
@@ -445,6 +540,12 @@ class qp
         return $this->qp_file_generic($query);
     }
 
+    /**
+     * Outputs a specified file to the browser as an image.
+     *
+     * @param $file string Path to image.
+     * @return string Error message.
+     */
     function qp_file_generic($file)
     {
         if (!file_exists($file))
@@ -455,11 +556,22 @@ class qp
         exit;
     }
 
+    /**
+     * The unspeakable has happened.
+     *
+     * @param $query string Useless parameter to comply with the interface.
+     * @return string The manifestation of sheer terror.
+     */
     function qp_wtf($query)
     {
         return '<div class="errormsg"><marquee><span style="font-size: 72px;">WUT?!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#3232;___&#3232;</span></marquee></div>';
     }
 
+    /**
+     * Scans through all files in the directory and saves the result to cache.
+     *
+     * @param $dir string Path to a directory.
+     */
     function scan_files($dir)
     {
         $file = $dir . '/.files';
@@ -485,6 +597,11 @@ class qp
             $this->files = false;
     }
 
+    /**
+     * Scans through all subfolders in the directory and saves the result to cache.
+     *
+     * @param $dir string Path to a directory.
+     */
     function scan_dirs($dir)
     {
         $file = $dir . '/.dirs';
@@ -517,6 +634,12 @@ class qp
             $this->files = false;
     }
 
+    /**
+     * Retrieves the number of files in a folder, either from cache or directly.
+     *
+     * @param $dir string Path to directory.
+     * @return int Number of files.
+     */
     function count_files($dir)
     {
         if (file_exists($dir . '/.files'))
@@ -540,6 +663,12 @@ class qp
         return $count;
     }
 
+    /**
+     * Recursively outputs the directory tree.
+     *
+     * @param $root string The base folder for current one.
+     * @param $data mixed Current tree node.
+     */
     function output_tree($root, $data)
     {
         if (is_array($data) && count($data))
@@ -561,6 +690,12 @@ class qp
         }
     }
 
+    /**
+     * Drops off known postfixes from the filename.
+     *
+     * @param $query string Query string.
+     * @return string File path without postfix.
+     */
     private function get_filename($query)
     {
         $postfixes = array('.m', '.s', '.view');
@@ -574,7 +709,11 @@ class qp
         return $query;
     }
 
-    // output
+    /**
+     * Outputs the general frame of the gallery.
+     *
+     * @param $result string HTML code of the currently displayed item.
+     */
     function output($result)
     {
         // head
@@ -797,7 +936,9 @@ class qp
     </table>';
     }
 
-    // main function
+    /**
+     * Handles all the stuff.
+     */
     function process()
     {
         $this->load_dirs('.', $this->all_dirs);
@@ -807,9 +948,5 @@ class qp
     }
 }
 
-// OMG RUN!!!
-
 $qp = new qp();
 $qp->process();
-
-?>
