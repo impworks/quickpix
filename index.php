@@ -9,6 +9,9 @@
 define('ITEMS_IN_ROW', 4);
 define('ROOT_DIR', '/');
 define('TITLE', 'QuickPix');
+define('ALLOW_UPDATE', true);
+define('ALLOW_CLEAR', true);
+define('ALLOW_ZIP', true);
 
 class qp
 {
@@ -125,6 +128,12 @@ class qp
         $folderinfo = pathinfo($folder);
         $foldername = $folderinfo['basename'];
 
+        if(!ALLOW_ZIP)
+        {
+            header("Location: /" . $folder);
+            exit;
+        }
+
         if (is_dir($folder))
         {
             $this->scan_files($folder);
@@ -143,6 +152,12 @@ class qp
 
     function qp_update($query)
     {
+        if(!ALLOW_UPDATE)
+        {
+            header("Location: .");
+            exit;
+        }
+
         $matches = array ();
         $result = preg_match('/^(?<folder>.*)\/\.update$/im', $query, $matches);
         $folder = $result ? $matches['folder'] : '.';
@@ -290,7 +305,7 @@ class qp
             <table cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
                 <td class="header">' . $this->breadcrumb($query) . '</td>
-                <td class="header" align="right" width="20%"><a href="' . $dirname . '.zip">Download as archive</a></td>
+                <td class="header" align="right" width="20%">' . ( ALLOW_ZIP ? '<a href="' . $dirname . '.zip">Download as archive</a>' : '' ) . '</td>
               </tr>
               <tr>
                 <td class="text cell" colspan="2">
@@ -335,13 +350,13 @@ class qp
 
     function qp_view($query)
     {
-        $file = $this->fix_case(str_replace(".view", ".jpg", $query));
+        $file = $this->get_filename($query);
 
         if (!file_exists($file))
             return '<div class="errormsg">File does not exist!</div>';
 
         $matches = array();
-        preg_match('/(?<folder>.*)\/(?<file>.*?)\.jpg$/im', $file, $matches);
+        preg_match('/(?<folder>.*)\/(?<file>[^\/]*?)$/im', $file, $matches);
         $folder = $matches['folder'];
         $filename = $matches['file'];
         $this->scan_files($folder);
@@ -350,7 +365,7 @@ class qp
         for ($idx = 0; $idx < count($this->files); $idx++)
         {
             $curr = $this->files[$idx];
-            if (!strcasecmp($curr[0], $filename . '.jpg'))
+            if (!strcasecmp($curr[0], $filename))
             {
                 $descr = trim($curr[1]);
 
@@ -371,7 +386,7 @@ class qp
       </tr>
       <tr>
         <td class="text cell" align="center" valign="center"><br>
-          <a href="' . $this->fix_case($query) . '"><img src="' . $filename . '.m" border="0" title="View full picture"></a><br><br>
+          <a href="' . $file . '"><img src="' . $filename . '.m" border="0" title="View full picture"></a><br><br>
           <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
             <tr>
               <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . $prev . '.jpg</a></nobr>' : '&nbsp;') . '</td>
@@ -389,22 +404,20 @@ class qp
 
     function qp_med($query)
     {
-        $dest = $this->fix_case($query);
-        $src = $this->fix_case(str_replace('.m', '.jpg', $query));
-        if (!file_exists($dest))
-            $this->make_pic(640, $src, $dest);
+        $src = $this->get_filename($query);
+        if (!file_exists($query))
+            $this->make_pic(640, $src, $query);
 
-        return $this->qp_file_generic($dest);
+        return $this->qp_file_generic($query);
     }
 
     function qp_small($query)
     {
-        $dest = $this->fix_case($query);
-        $src = $this->fix_case(str_replace('.s', '.jpg', $query));
-        if (!file_exists($dest))
-            $this->make_pic(120, $src, $dest);
+        $src = $this->get_filename($query);
+        if (!file_exists($query))
+            $this->make_pic(120, $src, $query);
 
-        return $this->qp_file_generic($dest);
+        return $this->qp_file_generic($query);
     }
 
     function qp_file_generic($file)
@@ -460,7 +473,7 @@ class qp
                     while (($curr = readdir($handle)) !== false)
                     {
                         $temp = $dir . '/' . $curr;
-                        if (is_dir($temp) && $curr != '.' && $curr != '..')
+                        if ($curr != '.' && $curr != '..' && is_dir($temp))
                             $content .= $curr . '::' . $this->count_files($dir . '/' . $curr) . "::\n";
                     }
                 }
@@ -487,9 +500,17 @@ class qp
         $count = 0;
 
         if ($handle = opendir($dir))
+        {
             while (($curr = readdir($handle)) !== false)
-                if (preg_match('/(?<!folder)\.jpg$/i', $curr))
+            {
+                if($curr == '.' || $curr == '..')
+                    continue;
+
+                $path = $dir . '/' . $curr;
+                if(is_file($path))
                     $count++;
+            }
+        }
 
         return $count;
     }
@@ -515,19 +536,17 @@ class qp
         }
     }
 
-    function fix_case($path)
+    private function get_filename($query)
     {
-        $info = pathinfo($path);
-        $base = $info['dirname'];
-        $files = scandir($base);
-        foreach($files as $file)
+        $postfixes = array('.m', '.s', '.view');
+        foreach($postfixes as $pfx)
         {
-            $curr = $base . '/' . $file;
-            if(strcasecmp($curr, $path) == 0)
-                return $curr;
+            $len = strlen($pfx);
+            if(substr($query, -$len) === $pfx)
+                return substr($query, 0, -$len);
         }
 
-        return $path;
+        return $query;
     }
 
     // output
