@@ -95,12 +95,13 @@ class qp
         return $crumb;
     }
 
-    function make_pic($size, $src, $dest)
+    function make_preview($src, $dest)
     {
-        list($x, $y) = getimagesize($src);
-        $img = imagecreatefromjpeg($src);
+        $size = 640;
 
-        // detect size
+        list($x, $y) = getimagesize($src);
+        $imgsrc = imagecreatefromjpeg($src);
+
         if ($x > $y)
         {
             $newx = $size;
@@ -113,7 +114,31 @@ class qp
         }
 
         $imgdest = imagecreatetruecolor($newx, $newy);
-        imagecopyresampled($imgdest, $img, 0, 0, 0, 0, $newx, $newy, $x, $y);
+        imagecopyresampled($imgdest, $imgsrc, 0, 0, 0, 0, $newx, $newy, $x, $y);
+        imagejpeg($imgdest, $dest);
+    }
+
+    function make_thumb($src, $dest)
+    {
+        $size = 120;
+
+        list($x, $y) = getimagesize($src);
+        $imgsrc = imagecreatefromjpeg($src);
+
+        $srcsize = min($x, $y);
+        if($x > $y)
+        {
+            $yoff = 0;
+            $xoff = (($x * $size / (float)$y) - $size) / 2;
+        }
+        else
+        {
+            $yoff = (($y * $size / (float)$x) - $size) / 2;
+            $xoff = 0;
+        }
+
+        $imgdest = imagecreatetruecolor($size, $size);
+        imagecopyresampled($imgdest, $imgsrc, 0, 0, $xoff, $yoff, $size, $size, $srcsize, $srcsize);
         imagejpeg($imgdest, $dest);
     }
 
@@ -406,7 +431,7 @@ class qp
     {
         $src = $this->get_filename($query);
         if (!file_exists($query))
-            $this->make_pic(640, $src, $query);
+            $this->make_preview($src, $query);
 
         return $this->qp_file_generic($query);
     }
@@ -415,7 +440,7 @@ class qp
     {
         $src = $this->get_filename($query);
         if (!file_exists($query))
-            $this->make_pic(120, $src, $query);
+            $this->make_thumb($src, $query);
 
         return $this->qp_file_generic($query);
     }
