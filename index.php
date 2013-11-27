@@ -47,10 +47,421 @@ define('ALLOW_ZIP', true);
 
 class qp
 {
-    private $dirs;
-    private $files;
     private $all_dirs;
-    private $setup;
+
+    // ================================================================================
+    //                            Startup & dispatching
+    // ================================================================================
+
+    /**
+     * Handles all the stuff.
+     */
+    function process()
+    {
+        $this->load_dirs('.', $this->all_dirs);
+
+        $setup = $this->determine_mode();
+        $result = $this->{'qp_' . $setup['mode']}($setup['dir'], $setup['file']);
+        $this->output($result);
+    }
+
+    /**
+     * Dispatcher method that detects mode depending on query.
+     *
+     * @return array Array with route data.
+     */
+    function determine_mode()
+    {
+        $q = $_SERVER['REDIRECT_QUERY_STRING'];
+        $data = array();
+
+        if (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.[sm]$/i', $q, $data))
+            $mode = 'preview';
+
+        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.view$/i', $q, $data))
+            $mode = 'view';
+
+        elseif (preg_match('/^(?<dir>.*?)\.update$/i', $q))
+            $mode = 'update';
+
+        elseif (preg_match('/^(?<dir>.*?)\.clean/i', $q))
+            $mode = 'clean';
+
+        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.zip$/i', $q))
+            $mode = 'zip';
+
+        elseif (preg_match('/^(?<dir>.*?)\/?$/i', $q))
+            $mode = 'dir';
+
+        else
+            $mode = 'wtf';
+
+        if (!$data['folder'])
+            $data['folder'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['folder']);
+
+        return array('mode' => $mode, 'dir' => $data['dir'], 'file' => $data['file']);
+    }
+
+    // ================================================================================
+    //                                    Commands
+    // ================================================================================
+
+    /**
+     * Displays directory content.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     * @return string HTML code to output.
+     */
+    function qp_dir($dir, $file)
+    {
+        if (!is_dir($dir))
+            return '<div class="errormsg">Directory not found!</div>';
+
+        $info = $this->scan_dir($dir);
+        $return = '';
+
+        if ($info['dirs'])
+        {
+            $return .= '
+          <div class="block">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td class="header">Subfolders</td>
+              </tr>
+              <tr>
+                <td class="text cell">
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%">';
+
+            $items = count($info['dirs']);
+            $rows = ceil($items / ITEMS_IN_ROW);
+            $space = 100 / ITEMS_IN_ROW;
+            $curr = 0;
+            for ($idx = 0; $idx < $rows; $idx++)
+            {
+                $return .= '<tr>';
+
+                for ($idx2 = 0; $idx2 < ITEMS_IN_ROW; $idx2++)
+                {
+                    $subdir = $info['dirs'][$curr];
+                    $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
+
+                    if ($curr < $items)
+                        $return .= '<div class="folder">' . ($subdir[1] ? '<a href="' . $subdir[0] . '/">' . $subdir[1] . '</a>' : '') . '</div><br><a href="' . $subdir[0] . '/">' . (trim($subdir[2]) ? $subdir[2] : $subdir[0]) . '</a>';
+
+                    $return .= '</td>';
+
+                    $curr++;
+                }
+
+                $return .= '</tr>';
+            }
+
+            $return .= '
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </div>';
+        }
+
+        if ($info['files'])
+        {
+            if ($info['dirs']) $return .= '<br><br>';
+
+            $dirname = util::pathinfo($dir, 'basename');
+
+            $return .= '
+          <div class="block">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td class="header">' . $this->breadcrumb($dir) . '</td>
+                <td class="header" align="right" width="20%">' . ( ALLOW_ZIP ? '<a href="' . $dirname . '.zip">Download as archive</a>' : '' ) . '</td>
+              </tr>
+              <tr>
+                <td class="text cell" colspan="2">
+                  <table cellpadding="12" cellspacing="0" border="0" width="100%">';
+
+            $items = count($info['files']);
+            $rows = ceil($items / ITEMS_IN_ROW);
+            $curr = 0;
+            for ($idx = 0; $idx < $rows; $idx++)
+            {
+                $return .= '<tr>';
+
+                for ($idx2 = 0; $idx2 < ITEMS_IN_ROW; $idx2++)
+                {
+                    $return .= '<td class="text" width="25%" align="center" valign="middle">';
+                    if ($curr < $items)
+                    {
+                        $filename = util::pathinfo($info['files'][$curr][0], 'filename');
+                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br>' . $this->files[$curr][0] . '</a>';
+                    }
+                    $return .= '</td>';
+
+                    $curr++;
+                }
+
+                $return .= '</tr>';
+            }
+
+            $return .= '
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </div>';
+        }
+
+        if (!$this->dirs && !$this->files)
+            return '<div class="errormsg">Directory is empty!</div>';
+
+        return $return;
+    }
+
+    /**
+     * Displays single file preview.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     * @return string HTML code to output.
+     */
+    function qp_view($dir, $file)
+    {
+        $path = $this->get_filename(util::combine($dir, $file));
+
+        if (!file_exists($path))
+            return '<div class="errormsg">File does not exist!</div>';
+
+        $this->scan_files($dir);
+
+        $return = '';
+        for ($idx = 0; $idx < count($this->files); $idx++)
+        {
+            $curr = $this->files[$idx];
+            if (!strcasecmp($curr[0], $file))
+            {
+                $descr = trim($curr[1]);
+
+                if ($idx > 0)
+                    $prev = substr($this->files[$idx - 1][0], 0, -4);
+                if ($idx < count($this->files) - 1)
+                    $next = substr($this->files[$idx + 1][0], 0, -4);
+
+                break;
+            }
+        }
+
+        $return .= '
+  <div class="block">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td class="header">' . $this->breadcrumb($dir) . ' &raquo; ' . $file . '</td>
+      </tr>
+      <tr>
+        <td class="text cell" align="center" valign="center"><br>
+          <a href="' . $path . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br><br>
+          <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
+            <tr>
+              <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . $prev . '.jpg</a></nobr>' : '&nbsp;') . '</td>
+              <td class="text" width="400" align="center">' . $descr . '</td>
+              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . $next . '.jpg</a> &raquo;</nobr>' : '&nbsp;') . '</td>
+            </tr>
+          <table>
+        </td>
+      </tr>
+    </table>
+  </div>';
+
+        return $return;
+    }
+
+    /**
+     * Creates a preview and outputs it to the browser.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     * @return string Error message.
+     */
+    function qp_preview($dir, $file)
+    {
+        $dest = util::combine($dir, $file);
+        $src = $this->get_filename($dest);
+        if (!file_exists($dest))
+        {
+            if(util::has_extension($file, 'm'))
+                $this->make_preview($src, $dest);
+            else
+                $this->make_thumb($src, $dest);
+        }
+
+        return $this->file_generic($dest);
+    }
+
+    /**
+     * Creates a zip archive with all files in the current directory.
+     * Does not include subdirectories.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     * @return mixed Error message or zip archive to download.
+     */
+    function qp_zip($dir, $file)
+    {
+        if(!ALLOW_ZIP)
+        {
+            header("Location: /" . $dir);
+            exit;
+        }
+
+        if (!is_dir($dir))
+            return '<div class="errormsg">Directory not found!</div>';
+
+        $filename = util::pathinfo($dir . '/', 'basename') . '.zip';
+        $info = $this->scan_dir($dir);
+
+        $zip = new ZipArchive;
+        $zip->open(util::combine($dir, $filename), ZipArchive::CREATE);
+
+        foreach ($info['files'] as $name => $_)
+            $zip->addFile(util::combine($dir, $name));
+
+        $zip->close();
+
+        header('Location: ' . $filename);
+    }
+
+    /**
+     * Updates the subfolder & file cache for a directory in case its content has been modified.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     */
+    function qp_update($dir, $file)
+    {
+        if(!ALLOW_UPDATE)
+        {
+            header("Location: .");
+            exit;
+        }
+
+        if (is_dir($dir))
+        {
+            //update directories
+            $cache = util::combine($dir, '.dirs');
+            if (file_exists($file))
+            {
+                $dirs = file($cache);
+                foreach ($dirs as $nm => $val)
+                    $dirs[$nm] = explode("::", trim($val));
+            }
+
+            $content = "";
+            if ($handle = opendir($dir))
+            {
+                while (($curr = readdir($handle)) !== false)
+                {
+                    $temp = util::combine($dir, $curr);
+                    if (is_dir($temp) && $curr != '.' && $curr != '..')
+                    {
+                        // check if .hidden file is not present
+                        if (!file_exists(util::combine($temp, '.hidden')))
+                        {
+                            $oldname = '';
+                            foreach ($dirs as $val)
+                            {
+                                if (!strcasecmp($val[0], $curr))
+                                {
+                                    $oldname = $val[2];
+                                    break;
+                                }
+                            }
+
+                            $content .= $curr . '::' . $this->count_files($temp) . '::' . $oldname . "\n";
+                        }
+                    }
+                }
+            }
+
+            file_put_contents($cache, $content);
+
+            // update files
+            $cache = util::combine($dir, '.files');
+            if (file_exists($file))
+            {
+                $files = file($cache);
+                foreach ($files as $nm => $val)
+                    $files[$nm] = explode("::", trim($val));
+            }
+
+            $content = "";
+            if ($handle = opendir($dir))
+            {
+                while (($curr = readdir($handle)) !== false)
+                {
+                    $oldname = '';
+                    foreach ($files as $nm => $val)
+                    {
+                        if (!strcasecmp($val[0], $curr))
+                        {
+                            $oldname = $val[1];
+                            break;
+                        }
+                    }
+
+                    $content .= $curr . '::' . $oldname . "\n";
+                }
+            }
+
+            file_put_contents($cache, $content);
+        }
+
+        header("Location: .");
+    }
+
+    /**
+     * Removes all cached files in the directory.
+     *
+     * @param $dir string Directory path.
+     * @param $file string File name with extension, if applicable.
+     */
+    function qp_clean($dir, $file)
+    {
+        if(!ALLOW_CLEAN)
+        {
+            header("Location: .");
+            exit;
+        }
+
+        $exts = array( "s", "m", "zip" );
+
+        if(is_dir($dir))
+        {
+            $files = scandir($dir);
+            foreach($files as $file)
+            {
+                $path = util::combine($dir, $file);
+                if(util::has_extension($file, $exts) && is_file($path))
+                    unlink($path);
+            }
+        }
+
+        header("Location: .");
+    }
+
+    /**
+     * The unspeakable has happened.
+     *
+     * @return string The manifestation of sheer terror.
+     */
+    function qp_wtf()
+    {
+        return '<div class="errormsg"><marquee><span style="font-size: 72px;">WUT?!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#3232;___&#3232;</span></marquee></div>';
+    }
+
+    // ================================================================================
+    //                                 Helper methods
+    // ================================================================================
 
     /**
      * Loads data from a pre-cached .dirs file.
@@ -61,56 +472,17 @@ class qp
     function load_dirs($from, &$data)
     {
         $file = util::combine($from, ".dirs");
-        if (file_exists($file))
+        if (!file_exists($file))
+            return;
+
+        $tmp = file($file);
+        foreach ($tmp as $nm => $val)
         {
-            $tmp = file($file);
-            foreach ($tmp as $nm => $val)
-            {
-                $data[$nm] = explode("::", $val);
-                $sub = util::combine($from, $data[$nm][0], '.dirs');
-                if (file_exists($sub))
-                    $this->load_dirs(util::combine($from, $data[$nm][0]), $data[$nm][3]);
-            }
+            $data[$nm] = explode("::", $val);
+            $sub = util::combine($from, $data[$nm][0], '.dirs');
+            if (file_exists($sub))
+                $this->load_dirs(util::combine($from, $data[$nm][0]), $data[$nm][3]);
         }
-    }
-
-    /**
-     * Dispatcher method that detects mode depending on query.
-     */
-    function determine_mode()
-    {
-        $q = $_SERVER['REDIRECT_QUERY_STRING'];
-
-        if (preg_match('/^(.*?)\/(.*?)\.s$/i', $q))
-            $mode = 'small';
-
-        elseif (preg_match('/^(.*?)\/(.*?)\.m$/i', $q))
-            $mode = 'med';
-
-        elseif (preg_match('/^(.*?)\/(.*?)\.view$/i', $q))
-            $mode = 'view';
-
-        elseif (preg_match('/^(.*?)\.update$/i', $q))
-            $mode = 'update';
-
-        elseif (preg_match('/^(.*?)\.clean/i', $q))
-            $mode = 'update';
-
-        elseif (preg_match('/^(.*?)\/[^\/]+\.zip$/i', $q))
-            $mode = 'zip';
-
-        elseif (preg_match('/^(.*?)\/?$/i', $q))
-            $mode = 'dir';
-
-        else
-            $mode = 'wtf';
-
-        if (!$q)
-            $q = '.';
-        else
-            $q = preg_replace('/(\/*$|\.\.\/)/i', '', $q);
-
-        $this->setup = array('mode' => 'qp_' . $mode, 'query' => $q);
     }
 
     /**
@@ -130,7 +502,7 @@ class qp
             if (!$folder)
                 continue;
 
-            foreach ($folder as $nm => $val)
+            foreach ($folder as $val)
             {
                 if (!strcasecmp($val[0], $pieces[$idx]))
                 {
@@ -144,6 +516,126 @@ class qp
 
         return $crumb;
     }
+
+    /**
+     * Outputs a specified file to the browser as an image.
+     *
+     * @param $file string Path to image.
+     * @return string Error message.
+     */
+    function file_generic($file)
+    {
+        if (!file_exists($file))
+            return '<div class="errormsg">File does not exist!</div>';
+
+        header("Content-Type: image/jpeg");
+        readfile($file);
+        exit;
+    }
+
+    /**
+     * Scans through all files in the directory and saves the result to cache.
+     *
+     * @param $dir string Path to a directory.
+     * @return array List of files and subdirectories in current directory.
+     */
+    function scan_dir($dir)
+    {
+        $cache = util::combine($dir, '.info');
+
+        if(file_exists($cache))
+            return json_decode(file_get_contents($cache));
+
+        $info = array('files' => array(), 'dirs' => array());
+
+        foreach(scandir($dir) as $curr)
+        {
+            if($curr == '.' || $curr == '..')
+                continue;
+
+            $path = util::combine($dir, $curr);
+            if(is_dir($path))
+                $info['dirs'][$curr] = array('caption' => '', 'files' => 0);
+            else if(is_file($path))
+                $files['files'][$curr] = array('caption' => '');
+        }
+
+        file_put_contents($cache, json_encode($info));
+        return $info;
+    }
+
+    /**
+     * Retrieves the number of files in a folder, either from cache or directly.
+     *
+     * @param $dir string Path to directory.
+     * @return int Number of files.
+     */
+    function count_files($dir)
+    {
+        $cache = util::combine($dir, '.info');
+        if (file_exists($cache))
+        {
+            $info = json_decode(file_get_contents($cache));
+            return count($info['files']);
+        }
+
+        $count = 0;
+
+        foreach(scandir($dir) as $curr)
+        {
+            if($curr == '.' || $curr == '..')
+                continue;
+
+            $path = util::combine($dir, $curr);
+            if(is_file($path))
+                $count++;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Recursively outputs the directory tree.
+     *
+     * @param $root string The base folder for current one.
+     * @param $data mixed Current tree node.
+     * @param $depth int Depth index
+     */
+    function output_tree($root, $data, $depth = 0)
+    {
+        if (is_array($data) && count($data))
+        {
+            foreach ($data as $val)
+            {
+                echo '<div class="pck-header' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val[1] > 0 ? $val[1] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
+                if (is_array($val[3]))
+                {
+                    echo '<div class="pck-sub pck-hidden">';
+                    $this->output_tree($root . $val[0] . '/', $val[3], $depth+1);
+                    echo '</div>';
+                }
+            }
+        }
+        else
+        {
+            echo '<div class="errormsg">Directory is empty!</div>';
+        }
+    }
+
+    /**
+     * Drops off known postfixes from the filename.
+     *
+     * @param $query string Query string.
+     * @return string File path without any known postfix.
+     */
+    private function get_filename($query)
+    {
+        return preg_replace('/\.(m|s|view)$/i', '', trim($query));
+    }
+
+    // ================================================================================
+    //                              Image manipulations
+    // ================================================================================
 
     /**
      * Creates a preview image and stores it on the disk.
@@ -206,540 +698,9 @@ class qp
         imagejpeg($imgdest, $dest);
     }
 
-    /**
-     * Creates a zip archive with all files in the current directory.
-     * Does not include subdirectories.
-     *
-     * @param $query string Path to archive.
-     * @return mixed Error message or zip archive to download.
-     */
-    function qp_zip($query)
-    {
-        $matches = array ();
-        $result = preg_match('/^(?<folder>.*)\/[^\/]+\.zip$/im', $query, $matches);
-        if(!$result)
-            return '<div class="errormsg">Directory not found!</div>';
-
-        $folder = $matches['folder'] . '/';
-        $folderinfo = pathinfo($folder);
-        $foldername = $folderinfo['basename'];
-
-        if(!ALLOW_ZIP)
-        {
-            header("Location: /" . $folder);
-            exit;
-        }
-
-        if (!is_dir($folder))
-            return '<div class="errormsg">Directory not found!</div>';
-
-        $filename = $foldername . '.zip';
-        $this->scan_files($folder);
-
-        $zip = new ZipArchive;
-        $zip->open(util::combine($folder, $filename), ZipArchive::CREATE);
-
-        foreach ($this->files as $nm => $val)
-            $zip->addFile($folder . $val[0]);
-
-        $zip->close();
-
-        header('Location: ' . $filename);
-    }
-
-    /**
-     * Updates the subfolder & file cache for a directory in case its content has been modified.
-     *
-     * @param $query string Full query.
-     */
-    function qp_update($query)
-    {
-        if(!ALLOW_UPDATE)
-        {
-            header("Location: .");
-            exit;
-        }
-
-        $matches = array ();
-        $result = preg_match('/^(?<folder>.*)\/\.update$/im', $query, $matches);
-        $folder = $result ? $matches['folder'] : '.';
-
-        if (is_dir($folder))
-        {
-            //update directories
-            $file = util::combine($folder, '.dirs');
-            if (file_exists($file))
-            {
-                $dirs = file($file);
-                foreach ($dirs as $nm => $val)
-                    $dirs[$nm] = explode("::", trim($val));
-            }
-
-            $content = "";
-            if ($handle = opendir($folder))
-            {
-                while (($curr = readdir($handle)) !== false)
-                {
-                    $temp = util::combine($folder . '/' . $curr);
-                    if (is_dir($temp) && $curr != '.' && $curr != '..')
-                    {
-                        // check if .hidden file is not present
-                        if (!file_exists(util::combine($temp, '.hidden')))
-                        {
-                            $oldname = '';
-                            foreach ($dirs as $nm => $val)
-                            {
-                                if (!strcasecmp($val[0], $curr))
-                                {
-                                    $oldname = $val[2];
-                                    break;
-                                }
-                            }
-
-                            $content .= $curr . '::' . $this->count_files($temp) . '::' . $oldname . "\n";
-                        }
-                    }
-                }
-            }
-
-            file_put_contents($file, $content);
-
-            // update files
-            $file = util::combine($folder, '.files');
-            if (file_exists($file))
-            {
-                $files = file($file);
-                foreach ($files as $nm => $val)
-                    $files[$nm] = explode("::", trim($val));
-            }
-
-            $content = "";
-            if ($handle = opendir($folder))
-            {
-                while (($curr = readdir($handle)) !== false)
-                {
-                    if (preg_match('/(?<!folder)\.jpg$/i', $curr))
-                    {
-                        $oldname = '';
-                        foreach ($files as $nm => $val)
-                        {
-                            if (!strcasecmp($val[0], $curr))
-                            {
-                                $oldname = $val[1];
-                                break;
-                            }
-                        }
-
-                        $content .= $curr . '::' . $oldname . "\n";
-                    }
-                }
-            }
-
-            file_put_contents($file, $content);
-        }
-
-        header("Location: .");
-    }
-
-    /**
-     * Displays directory content.
-     *
-     * @param $query string Path to directory.
-     * @return string HTML code to output.
-     */
-    function qp_dir($query)
-    {
-        if (!is_dir($query))
-            return '<div class="errormsg">Directory not found!</div>';
-
-        $this->scan_dirs($query);
-        $this->scan_files($query);
-
-        $return = '';
-
-        if ($this->dirs)
-        {
-            $return .= '
-          <div class="block">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td class="header">Subfolders</td>
-              </tr>
-              <tr>
-                <td class="text cell">
-                  <table cellpadding="0" cellspacing="0" border="0" width="100%">';
-
-            $items = count($this->dirs);
-            $rows = ceil($items / ITEMS_IN_ROW);
-            $space = 100 / ITEMS_IN_ROW;
-            $curr = 0;
-            for ($idx = 0; $idx < $rows; $idx++)
-            {
-                $return .= '<tr>';
-
-                for ($idx2 = 0; $idx2 < ITEMS_IN_ROW; $idx2++)
-                {
-                    $dir = $this->dirs[$curr];
-                    $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
-
-                    if ($curr < $items)
-                        $return .= '<div class="folder">' . ($dir[1] ? '<a href="' . $dir[0] . '/">' . $dir[1] . '</a>' : '') . '</div><br><a href="' . $dir[0] . '/">' . (trim($dir[2]) ? $dir[2] : $dir[0]) . '</a>';
-
-                    $return .= '</td>';
-
-                    $curr++;
-                }
-
-                $return .= '</tr>';
-            }
-
-            $return .= '
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </div>';
-        }
-
-        if ($this->files)
-        {
-            if ($this->dirs) $return .= '<br><br>';
-
-            $dirinfo = pathinfo($query);
-            $dirname = $dirinfo['basename'];
-
-            $return .= '
-          <div class="block">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td class="header">' . $this->breadcrumb($query) . '</td>
-                <td class="header" align="right" width="20%">' . ( ALLOW_ZIP ? '<a href="' . $dirname . '.zip">Download as archive</a>' : '' ) . '</td>
-              </tr>
-              <tr>
-                <td class="text cell" colspan="2">
-                  <table cellpadding="12" cellspacing="0" border="0" width="100%">';
-
-            $items = count($this->files);
-            $rows = ceil($items / ITEMS_IN_ROW);
-            $curr = 0;
-            for ($idx = 0; $idx < $rows; $idx++)
-            {
-                $return .= '<tr>';
-
-                for ($idx2 = 0; $idx2 < ITEMS_IN_ROW; $idx2++)
-                {
-                    $return .= '<td class="text" width="25%" align="center" valign="middle">';
-                    if ($curr < $items)
-                    {
-                        $filename = substr($this->files[$curr][0], 0, -4);
-                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br>' . $this->files[$curr][0] . '</a>';
-                    }
-                    $return .= '</td>';
-
-                    $curr++;
-                }
-
-                $return .= '</tr>';
-            }
-
-            $return .= '
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </div>';
-        }
-
-        if (!$this->dirs && !$this->files)
-            return '<div class="errormsg">Directory is empty!</div>';
-
-        return $return;
-    }
-
-    /**
-     * Displays single file preview.
-     *
-     * @param $query string Path to file.
-     * @return string HTML code to output.
-     */
-    function qp_view($query)
-    {
-        $file = $this->get_filename($query);
-
-        if (!file_exists($file))
-            return '<div class="errormsg">File does not exist!</div>';
-
-        $matches = array();
-        preg_match('/(?<folder>.*)\/(?<file>[^\/]*?)$/im', $file, $matches);
-        $folder = $matches['folder'];
-        $filename = $matches['file'];
-        $this->scan_files($folder);
-
-        $return = '';
-        for ($idx = 0; $idx < count($this->files); $idx++)
-        {
-            $curr = $this->files[$idx];
-            if (!strcasecmp($curr[0], $filename))
-            {
-                $descr = trim($curr[1]);
-
-                if ($idx > 0)
-                    $prev = substr($this->files[$idx - 1][0], 0, -4);
-                if ($idx < count($this->files) - 1)
-                    $next = substr($this->files[$idx + 1][0], 0, -4);
-
-                break;
-            }
-        }
-
-        $return .= '
-  <div class="block">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr>
-        <td class="header">' . $this->breadcrumb($folder) . ' &raquo; ' . $filename . '</td>
-      </tr>
-      <tr>
-        <td class="text cell" align="center" valign="center"><br>
-          <a href="' . $file . '"><img src="' . $filename . '.m" border="0" title="View full picture"></a><br><br>
-          <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
-            <tr>
-              <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . $prev . '.jpg</a></nobr>' : '&nbsp;') . '</td>
-              <td class="text" width="400" align="center">' . $descr . '</td>
-              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . $next . '.jpg</a> &raquo;</nobr>' : '&nbsp;') . '</td>
-            </tr>
-          <table>
-        </td>
-      </tr>
-    </table>
-  </div>';
-
-        return $return;
-    }
-
-    /**
-     * Creates a preview and outputs it to the browser.
-     *
-     * @param $query string Path to image.
-     * @return string Error message.
-     */
-    function qp_med($query)
-    {
-        $src = $this->get_filename($query);
-        if (!file_exists($query))
-            $this->make_preview($src, $query);
-
-        return $this->qp_file_generic($query);
-    }
-
-    /**
-     * Creates a thumbnail and outputs it to the browser.
-     *
-     * @param $query string Path to image.
-     * @return string Error message.
-     */
-    function qp_small($query)
-    {
-        $src = $this->get_filename($query);
-        if (!file_exists($query))
-            $this->make_thumb($src, $query);
-
-        return $this->qp_file_generic($query);
-    }
-
-    /**
-     * Outputs a specified file to the browser as an image.
-     *
-     * @param $file string Path to image.
-     * @return string Error message.
-     */
-    function qp_file_generic($file)
-    {
-        if (!file_exists($file))
-            return '<div class="errormsg">File does not exist!</div>';
-
-        header("Content-Type: image/jpeg");
-        readfile($file);
-        exit;
-    }
-
-    /**
-     * Removes all cached files in the directory.
-     *
-     * @param $query string Full query.
-     */
-    function qp_clean($query)
-    {
-        if(!ALLOW_CLEAN)
-        {
-            header("Location: .");
-            exit;
-        }
-
-        $matches = array ();
-        $result = preg_match('/^(?<folder>.*)\/\.clean/im', $query, $matches);
-        $folder = $result ? $matches['folder'] : '.';
-
-        $exts = array( "s", "m", "zip" );
-
-        if(is_dir($folder))
-        {
-            $files = scandir($folder);
-            foreach($files as $file)
-            {
-                $path = util::combine($folder, $file);
-                if(util::has_extension($file, $exts) && is_file($path))
-                    unlink($path);
-            }
-        }
-
-        header("Location: .");
-    }
-
-    /**
-     * The unspeakable has happened.
-     *
-     * @param $query string Useless parameter to comply with the interface.
-     * @return string The manifestation of sheer terror.
-     */
-    function qp_wtf($query)
-    {
-        return '<div class="errormsg"><marquee><span style="font-size: 72px;">WUT?!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#3232;___&#3232;</span></marquee></div>';
-    }
-
-    /**
-     * Scans through all files in the directory and saves the result to cache.
-     *
-     * @param $dir string Path to a directory.
-     */
-    function scan_files($dir)
-    {
-        $file = util::combine($dir, '.files');
-        if (!file_exists($file))
-        {
-            $content = "";
-
-            if (is_dir($dir))
-                if ($handle = opendir($dir))
-                    while (($curr = readdir($handle)) !== false)
-                         $content .= $curr . "::\n";
-
-            file_put_contents($file, $content);
-        }
-
-        if (file_exists($file))
-        {
-            $tmp = file($file);
-            foreach ($tmp as $nm => $val)
-                $this->files[$nm] = explode("::", $val);
-        }
-        else
-            $this->files = false;
-    }
-
-    /**
-     * Scans through all subfolders in the directory and saves the result to cache.
-     *
-     * @param $dir string Path to a directory.
-     */
-    function scan_dirs($dir)
-    {
-        $file = util::combine($dir, '.dirs');
-        if (!file_exists($file))
-        {
-            $content = "";
-            if (is_dir($dir))
-            {
-                if ($handle = opendir($dir))
-                {
-                    while (($curr = readdir($handle)) !== false)
-                    {
-                        $temp = util::combine($dir, $curr);
-                        if ($curr != '.' && $curr != '..' && is_dir($temp))
-                            $content .= $curr . '::' . $this->count_files($temp) . "::\n";
-                    }
-                }
-
-                file_put_contents($file, $content);
-            }
-        }
-
-        if (file_exists($file))
-        {
-            $tmp = file($file);
-            foreach ($tmp as $nm => $val)
-                $this->dirs[$nm] = explode("::", $val);
-        }
-        else
-            $this->files = false;
-    }
-
-    /**
-     * Retrieves the number of files in a folder, either from cache or directly.
-     *
-     * @param $dir string Path to directory.
-     * @return int Number of files.
-     */
-    function count_files($dir)
-    {
-        $cache = util::combine($dir, '.files');
-        if (file_exists($cache))
-            return count(file($cache));
-
-        $count = 0;
-
-        if ($handle = opendir($dir))
-        {
-            while (($curr = readdir($handle)) !== false)
-            {
-                if($curr == '.' || $curr == '..')
-                    continue;
-
-                $path = util::combine($dir, $curr);
-                if(is_file($path))
-                    $count++;
-            }
-        }
-
-        return $count;
-    }
-
-    /**
-     * Recursively outputs the directory tree.
-     *
-     * @param $root string The base folder for current one.
-     * @param $data mixed Current tree node.
-     */
-    function output_tree($root, $data)
-    {
-        if (is_array($data) && count($data))
-        {
-            foreach ($data as $nm => $val)
-            {
-                echo '<div class="pck-header pck-' . ($data == $this->all_dirs ? '' : 'sub') . 'branch"><div class="pck-menu">' . ($val[1] > 0 ? $val[1] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
-                if (is_array($val[3]))
-                {
-                    echo '<div class="pck-sub pck-hidden">';
-                    $this->output_tree($root . $val[0] . '/', $val[3]);
-                    echo '</div>';
-                }
-            }
-        }
-        else
-        {
-            echo '<div class="errormsg">Directory is empty!</div>';
-        }
-    }
-
-    /**
-     * Drops off known postfixes from the filename.
-     *
-     * @param $query string Query string.
-     * @return string File path without postfix.
-     */
-    private function get_filename($query)
-    {
-        return preg_replace('/\.(m|s|view)$/i', '', trim($query));
-    }
+    // ================================================================================
+    //                                 Main template
+    // ================================================================================
 
     /**
      * Outputs the general frame of the gallery.
@@ -967,17 +928,6 @@ class qp
       </tr>
     </table>';
     }
-
-    /**
-     * Handles all the stuff.
-     */
-    function process()
-    {
-        $this->load_dirs('.', $this->all_dirs);
-        $this->determine_mode();
-        $result = $this->{$this->setup['mode']}($this->setup['query']);
-        $this->output($result);
-    }
 }
 
 /**
@@ -1001,18 +951,34 @@ class util
 
     /**
      * Checks if a file name ends with any of the specified extensions.
-     * @param $file
-     * @param $extensions
+     * @param $file string File name or path.
+     * @param $extensions mixed Array of extensions or a single extension.
      * @return bool
      */
     static function has_extension($file, $extensions)
     {
+        if(!is_array($extensions))
+            $extensions = array($extensions);
+
         $info = pathinfo($file);
         foreach($extensions as $ext)
             if(strcasecmp($ext, $info['extension']) === 0)
                 return true;
 
         return false;
+    }
+
+    /**
+     * Gets the information piece about a file.
+     *
+     * @param $file string String path.
+     * @param $item string Mode: 'dirname', 'basename', 'extension' or 'filename'.
+     * @return string File name without extension.
+     */
+    static function pathinfo($file, $item)
+    {
+        $info = pathinfo($file);
+        return $info[$item];
     }
 
     /**
