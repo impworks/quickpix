@@ -32,11 +32,11 @@ define('TITLE', 'QuickPix');
 define('ALLOW_UPDATE', true);
 
 /**
- * Checks if all generated cache files (thumbnails, archives, etc.) can be removed by opening /foldername/.clear.
+ * Checks if all generated cache files (thumbnails, archives, etc.) can be removed by opening /foldername/.clean.
  * Default = true.
  * Can be disabled in case of malicious requests.
  */
-define('ALLOW_CLEAR', true);
+define('ALLOW_CLEAN', true);
 
 /**
  * Checks if users are allowed to download entire directories as zip archives.
@@ -60,16 +60,16 @@ class qp
      */
     function load_dirs($from, &$data)
     {
-        $file = $from . "/.dirs";
+        $file = util::combine($from, ".dirs");
         if (file_exists($file))
         {
             $tmp = file($file);
             foreach ($tmp as $nm => $val)
             {
                 $data[$nm] = explode("::", $val);
-                $sub = $from . '/' . $data[$nm][0] . '/' . '.dirs';
+                $sub = util::combine($from, $data[$nm][0], '.dirs');
                 if (file_exists($sub))
-                    $this->load_dirs($from . '/' . $data[$nm][0], $data[$nm][3]);
+                    $this->load_dirs(util::combine($from, $data[$nm][0]), $data[$nm][3]);
             }
         }
     }
@@ -93,6 +93,9 @@ class qp
         elseif (preg_match('/^(.*?)\.update$/i', $q))
             $mode = 'update';
 
+        elseif (preg_match('/^(.*?)\.clean/i', $q))
+            $mode = 'update';
+
         elseif (preg_match('/^(.*?)\/[^\/]+\.zip$/i', $q))
             $mode = 'zip';
 
@@ -102,9 +105,11 @@ class qp
         else
             $mode = 'wtf';
 
-        if (!$q) $q = '.';
-        if ($q[strlen($q) - 1] == '/') $q = substr($q, 0, -1);
-        $q = str_replace('..', '', $q);
+        if (!$q)
+            $q = '.';
+        else
+            $q = preg_replace('/(\/*$|\.\.\/)/i', '', $q);
+
         $this->setup = array('mode' => 'qp_' . $mode, 'query' => $q);
     }
 
@@ -225,26 +230,27 @@ class qp
             exit;
         }
 
-        if (is_dir($folder))
-        {
-            $this->scan_files($folder);
+        if (!is_dir($folder))
+            return '<div class="errormsg">Directory not found!</div>';
 
-            $zip = new ZipArchive;
-            $zip->open($folder . $foldername . '.zip', ZipArchive::CREATE);
+        $filename = $foldername . '.zip';
+        $this->scan_files($folder);
 
-            foreach ($this->files as $nm => $val)
-                $zip->addFile($folder . $val[0]);
+        $zip = new ZipArchive;
+        $zip->open(util::combine($folder, $filename), ZipArchive::CREATE);
 
-            $zip->close();
+        foreach ($this->files as $nm => $val)
+            $zip->addFile($folder . $val[0]);
 
-            header('Location: ' . $foldername . '.zip');
-        }
+        $zip->close();
+
+        header('Location: ' . $filename);
     }
 
     /**
      * Updates the subfolder & file cache for a directory in case its content has been modified.
      *
-     * @param $query Path to directory.
+     * @param $query string Full query.
      */
     function qp_update($query)
     {
@@ -261,7 +267,7 @@ class qp
         if (is_dir($folder))
         {
             //update directories
-            $file = $folder . '/.dirs';
+            $file = util::combine($folder, '.dirs');
             if (file_exists($file))
             {
                 $dirs = file($file);
@@ -274,11 +280,11 @@ class qp
             {
                 while (($curr = readdir($handle)) !== false)
                 {
-                    $temp = $folder . '/' . $curr;
+                    $temp = util::combine($folder . '/' . $curr);
                     if (is_dir($temp) && $curr != '.' && $curr != '..')
                     {
                         // check if .hidden file is not present
-                        if (!file_exists($temp . '/.hidden'))
+                        if (!file_exists(util::combine($temp, '.hidden')))
                         {
                             $oldname = '';
                             foreach ($dirs as $nm => $val)
@@ -290,7 +296,7 @@ class qp
                                 }
                             }
 
-                            $content .= $curr . '::' . $this->count_files($folder . '/' . $curr) . '::' . $oldname . "\n";
+                            $content .= $curr . '::' . $this->count_files($temp) . '::' . $oldname . "\n";
                         }
                     }
                 }
@@ -299,7 +305,7 @@ class qp
             file_put_contents($file, $content);
 
             // update files
-            $file = $folder . '/.files';
+            $file = util::combine($folder, '.files');
             if (file_exists($file))
             {
                 $files = file($file);
@@ -557,6 +563,39 @@ class qp
     }
 
     /**
+     * Removes all cached files in the directory.
+     *
+     * @param $query string Full query.
+     */
+    function qp_clean($query)
+    {
+        if(!ALLOW_CLEAN)
+        {
+            header("Location: .");
+            exit;
+        }
+
+        $matches = array ();
+        $result = preg_match('/^(?<folder>.*)\/\.clean/im', $query, $matches);
+        $folder = $result ? $matches['folder'] : '.';
+
+        $exts = array( "s", "m", "zip" );
+
+        if(is_dir($folder))
+        {
+            $files = scandir($folder);
+            foreach($files as $file)
+            {
+                $path = util::combine($folder, $file);
+                if(util::has_extension($file, $exts) && is_file($path))
+                    unlink($path);
+            }
+        }
+
+        header("Location: .");
+    }
+
+    /**
      * The unspeakable has happened.
      *
      * @param $query string Useless parameter to comply with the interface.
@@ -574,7 +613,7 @@ class qp
      */
     function scan_files($dir)
     {
-        $file = $dir . '/.files';
+        $file = util::combine($dir, '.files');
         if (!file_exists($file))
         {
             $content = "";
@@ -604,7 +643,7 @@ class qp
      */
     function scan_dirs($dir)
     {
-        $file = $dir . '/.dirs';
+        $file = util::combine($dir, '.dirs');
         if (!file_exists($file))
         {
             $content = "";
@@ -614,9 +653,9 @@ class qp
                 {
                     while (($curr = readdir($handle)) !== false)
                     {
-                        $temp = $dir . '/' . $curr;
+                        $temp = util::combine($dir, $curr);
                         if ($curr != '.' && $curr != '..' && is_dir($temp))
-                            $content .= $curr . '::' . $this->count_files($dir . '/' . $curr) . "::\n";
+                            $content .= $curr . '::' . $this->count_files($temp) . "::\n";
                     }
                 }
 
@@ -642,8 +681,9 @@ class qp
      */
     function count_files($dir)
     {
-        if (file_exists($dir . '/.files'))
-            return count(file($dir . '/.files'));
+        $cache = util::combine($dir, '.files');
+        if (file_exists($cache))
+            return count(file($cache));
 
         $count = 0;
 
@@ -654,7 +694,7 @@ class qp
                 if($curr == '.' || $curr == '..')
                     continue;
 
-                $path = $dir . '/' . $curr;
+                $path = util::combine($dir, $curr);
                 if(is_file($path))
                     $count++;
             }
@@ -698,15 +738,7 @@ class qp
      */
     private function get_filename($query)
     {
-        $postfixes = array('.m', '.s', '.view');
-        foreach($postfixes as $pfx)
-        {
-            $len = strlen($pfx);
-            if(substr($query, -$len) === $pfx)
-                return substr($query, 0, -$len);
-        }
-
-        return $query;
+        return preg_replace('/\.(m|s|view)$/i', '', trim($query));
     }
 
     /**
@@ -945,6 +977,55 @@ class qp
         $this->determine_mode();
         $result = $this->{$this->setup['mode']}($this->setup['query']);
         $this->output($result);
+    }
+}
+
+/**
+ * The collection of various tools.
+ */
+class util
+{
+    /**
+     * Combines the parts of paths, removing extra slashes.
+     *
+     * @return string Path combined.
+     */
+    static function combine()
+    {
+        $args = func_get_args();
+        foreach($args as $id => $arg)
+            $args[$id] = trim($arg, ' \s\t/\\');
+
+        return implode('/', $args);
+    }
+
+    /**
+     * Checks if a file name ends with any of the specified extensions.
+     * @param $file
+     * @param $extensions
+     * @return bool
+     */
+    static function has_extension($file, $extensions)
+    {
+        $info = pathinfo($file);
+        foreach($extensions as $ext)
+            if(strcasecmp($ext, $info['extension']) === 0)
+                return true;
+
+        return false;
+    }
+
+    /**
+     * Checks if a string ends with another string.
+     * @param $str string Haystack.
+     * @param $substr string Needle.
+     * @return bool
+     */
+    static function ends_with($str, $substr)
+    {
+        $strlen = strlen($str);
+        $sublen = strlen($substr);
+        return $strlen >= $sublen && substr($str, -$sublen) == $substr;
     }
 }
 
