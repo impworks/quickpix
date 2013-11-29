@@ -96,7 +96,7 @@ class qp
         else
             $mode = 'wtf';
 
-        if (!$data['folder'])
+        if ($data['folder'])
             $data['folder'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['folder']);
 
         return array('mode' => $mode, 'dir' => $data['dir'], 'file' => $data['file']);
@@ -137,17 +137,21 @@ class qp
             $rows = ceil($items / ITEMS_IN_ROW);
             $space = 100 / ITEMS_IN_ROW;
             $curr = 0;
+
+            $dirnames = array_keys($info['dirs']);
+
             for ($idx = 0; $idx < $rows; $idx++)
             {
                 $return .= '<tr>';
 
                 for ($idx2 = 0; $idx2 < ITEMS_IN_ROW; $idx2++)
                 {
-                    $subdir = $info['dirs'][$curr];
+                    $dirname = $dirnames[$curr];
+                    $subdir = $info['dirs'][$dirname];
                     $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
 
                     if ($curr < $items)
-                        $return .= '<div class="folder">' . ($subdir[1] ? '<a href="' . $subdir[0] . '/">' . $subdir[1] . '</a>' : '') . '</div><br><a href="' . $subdir[0] . '/">' . (trim($subdir[2]) ? $subdir[2] : $subdir[0]) . '</a>';
+                        $return .= '<div class="folder">' . ($subdir['files'] ? '<a href="' . $dirname . '/">' . $subdir['files'] . '</a>' : '') . '</div><br><a href="' . $dirname . '/">' . (trim($subdir['caption']) ? $subdir['caption'] : $dirname) . '</a>';
 
                     $return .= '</td>';
 
@@ -185,6 +189,7 @@ class qp
             $items = count($info['files']);
             $rows = ceil($items / ITEMS_IN_ROW);
             $curr = 0;
+            $filenames = array_keys($info['files']);
             for ($idx = 0; $idx < $rows; $idx++)
             {
                 $return .= '<tr>';
@@ -194,8 +199,9 @@ class qp
                     $return .= '<td class="text" width="25%" align="center" valign="middle">';
                     if ($curr < $items)
                     {
-                        $filename = util::pathinfo($info['files'][$curr][0], 'filename');
-                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br>' . $this->files[$curr][0] . '</a>';
+                        $filename = $filenames[$curr];
+                        $file = $info['files'][$filename];
+                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br>' . util::coalesce(trim($file['caption']), $filename) . '</a>';
                     }
                     $return .= '</td>';
 
@@ -213,7 +219,7 @@ class qp
           </div>';
         }
 
-        if (!$this->dirs && !$this->files)
+        if (!$info['dirs'] && !$info['files'])
             return '<div class="errormsg">Directory is empty!</div>';
 
         return $return;
@@ -228,31 +234,19 @@ class qp
      */
     function qp_view($dir, $file)
     {
-        $path = $this->get_filename(util::combine($dir, $file));
+        $filename = $this->get_filename($file);
+        $path = util::combine($dir, $filename);
 
         if (!file_exists($path))
             return '<div class="errormsg">File does not exist!</div>';
 
-        $this->scan_files($dir);
+        $info = $this->scan_dir($dir);
+        $filenames = array_keys($info['files']);
+        $idx = array_search($filename, $filenames);
+        $prev = $idx > 0 ? $filenames[$idx - 1] : false;
+        $next = $idx < count($filenames) - 1 ? $filenames[$idx + 1] : false;
 
-        $return = '';
-        for ($idx = 0; $idx < count($this->files); $idx++)
-        {
-            $curr = $this->files[$idx];
-            if (!strcasecmp($curr[0], $file))
-            {
-                $descr = trim($curr[1]);
-
-                if ($idx > 0)
-                    $prev = substr($this->files[$idx - 1][0], 0, -4);
-                if ($idx < count($this->files) - 1)
-                    $next = substr($this->files[$idx + 1][0], 0, -4);
-
-                break;
-            }
-        }
-
-        $return .= '
+        return '
   <div class="block">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
@@ -263,17 +257,15 @@ class qp
           <a href="' . $path . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br><br>
           <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
             <tr>
-              <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . $prev . '.jpg</a></nobr>' : '&nbsp;') . '</td>
-              <td class="text" width="400" align="center">' . $descr . '</td>
-              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . $next . '.jpg</a> &raquo;</nobr>' : '&nbsp;') . '</td>
+              <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . util::coalesce(trim($info['files'][$prev]['caption']), $prev) . '</a></nobr>' : '&nbsp;') . '</td>
+              <td class="text" width="400" align="center">' . $info['files'][$filename]['descr'] . '</td>
+              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . util::coalesce(trim($info['files'][$next]['caption']), $next) . '.jpg</a> &raquo;</nobr>' : '&nbsp;') . '</td>
             </tr>
           <table>
         </td>
       </tr>
     </table>
   </div>';
-
-        return $return;
     }
 
     /**
@@ -467,22 +459,24 @@ class qp
      * Loads data from a pre-cached .dirs file.
      *
      * @param $from string Path to directory.
-     * @param $data array Referenced array to store data in.
+     * @return mixed The array of directories, or false if there is none.
      */
-    function load_dirs($from, &$data)
+    function load_dirs($from)
     {
-        $file = util::combine($from, ".dirs");
-        if (!file_exists($file))
-            return;
+        $cache = util::combine($from, ".info");
+        if (!file_exists($cache))
+            return false;
 
-        $tmp = file($file);
-        foreach ($tmp as $nm => $val)
+        $data = json_decode(file_get_contents($cache));
+        $result = array();
+
+        foreach ($data['dirs'] as $key => $val)
         {
-            $data[$nm] = explode("::", $val);
-            $sub = util::combine($from, $data[$nm][0], '.dirs');
-            if (file_exists($sub))
-                $this->load_dirs(util::combine($from, $data[$nm][0]), $data[$nm][3]);
+            $result[$key] = $val;
+            $result[$key]['subs'] = $this->load_dirs(util::combine($from, $key));
         }
+
+        return $result;
     }
 
     /**
@@ -502,13 +496,13 @@ class qp
             if (!$folder)
                 continue;
 
-            foreach ($folder as $val)
+            foreach ($folder as $key => $val)
             {
-                if (!strcasecmp($val[0], $pieces[$idx]))
+                if (!strcasecmp($key, $pieces[$idx]))
                 {
-                    $path .= '/' . $val[0];
-                    $crumb .= ' &raquo; <a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . '</a>';
-                    $folder = $val[3];
+                    $path .= '/' . $key;
+                    $crumb .= ' &raquo; <a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . util::coalesce(trim($val['caption']), $key) . '</a>';
+                    $folder = $val['subs'];
                     break;
                 }
             }
@@ -605,13 +599,13 @@ class qp
     {
         if (is_array($data) && count($data))
         {
-            foreach ($data as $val)
+            foreach ($data as $key => $val)
             {
-                echo '<div class="pck-header' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val[1] > 0 ? $val[1] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
-                if (is_array($val[3]))
+                echo '<div class="pck-header' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
+                if (is_array($val['subs']))
                 {
                     echo '<div class="pck-sub pck-hidden">';
-                    $this->output_tree($root . $val[0] . '/', $val[3], $depth+1);
+                    $this->output_tree($root . $key . '/', $val['subs'], $depth+1);
                     echo '</div>';
                 }
             }
@@ -940,7 +934,7 @@ class util
      *
      * @return string Path combined.
      */
-    static function combine()
+    public static function combine()
     {
         $args = func_get_args();
         foreach($args as $id => $arg)
@@ -955,7 +949,7 @@ class util
      * @param $extensions mixed Array of extensions or a single extension.
      * @return bool
      */
-    static function has_extension($file, $extensions)
+    public static function has_extension($file, $extensions)
     {
         if(!is_array($extensions))
             $extensions = array($extensions);
@@ -975,7 +969,7 @@ class util
      * @param $item string Mode: 'dirname', 'basename', 'extension' or 'filename'.
      * @return string File name without extension.
      */
-    static function pathinfo($file, $item)
+    public static function pathinfo($file, $item)
     {
         $info = pathinfo($file);
         return $info[$item];
@@ -987,11 +981,26 @@ class util
      * @param $substr string Needle.
      * @return bool
      */
-    static function ends_with($str, $substr)
+    public static function ends_with($str, $substr)
     {
         $strlen = strlen($str);
         $sublen = strlen($substr);
         return $strlen >= $sublen && substr($str, -$sublen) == $substr;
+    }
+
+    /**
+     * Returns the first non-null item from given list.
+     *
+     * @return mixed Item.
+     */
+    public static function coalesce()
+    {
+        $args = func_get_args();
+        foreach($args as $arg)
+            if($arg)
+                return $arg;
+
+        return null;
     }
 }
 
