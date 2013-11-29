@@ -58,7 +58,9 @@ class qp
      */
     function process()
     {
-        $this->load_dirs('.', $this->all_dirs);
+        error_reporting(E_ALL ^ E_NOTICE ^ E_DEPRECATED);
+
+        $this->all_dirs = $this->load_dirs('.');
 
         $setup = $this->determine_mode();
         $result = $this->{'qp_' . $setup['mode']}($setup['dir'], $setup['file']);
@@ -81,23 +83,23 @@ class qp
         elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.view$/i', $q, $data))
             $mode = 'view';
 
-        elseif (preg_match('/^(?<dir>.*?)\.update$/i', $q))
+        elseif (preg_match('/^(?<dir>.*?)\.update$/i', $q, $data))
             $mode = 'update';
 
-        elseif (preg_match('/^(?<dir>.*?)\.clean/i', $q))
+        elseif (preg_match('/^(?<dir>.*?)\.clean/i', $q, $data))
             $mode = 'clean';
 
-        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.zip$/i', $q))
+        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.zip$/i', $q, $data))
             $mode = 'zip';
 
-        elseif (preg_match('/^(?<dir>.*?)\/?$/i', $q))
+        elseif (preg_match('/^(?<dir>.*?)\/?$/i', $q, $data))
             $mode = 'dir';
 
         else
             $mode = 'wtf';
 
-        if ($data['folder'])
-            $data['folder'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['folder']);
+        if ($data['dir'])
+            $data['dir'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['dir']);
 
         return array('mode' => $mode, 'dir' => $data['dir'], 'file' => $data['file']);
     }
@@ -467,7 +469,7 @@ class qp
         if (!file_exists($cache))
             return false;
 
-        $data = json_decode(file_get_contents($cache));
+        $data = json_decode(file_get_contents($cache), true);
         $result = array();
 
         foreach ($data['dirs'] as $key => $val)
@@ -538,7 +540,7 @@ class qp
         $cache = util::combine($dir, '.info');
 
         if(file_exists($cache))
-            return json_decode(file_get_contents($cache));
+            return json_decode(file_get_contents($cache), true);
 
         $info = array('files' => array(), 'dirs' => array());
 
@@ -601,7 +603,7 @@ class qp
         {
             foreach ($data as $key => $val)
             {
-                echo '<div class="pck-header' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $val[0] . '/' . '">' . (trim($val[2]) ? trim($val[2]) : $val[0]) . (is_array($val[3]) ? ' &rarr;' : '') . '</a></div>';
+                echo '<div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a></div>';
                 if (is_array($val['subs']))
                 {
                     echo '<div class="pck-sub pck-hidden">';
