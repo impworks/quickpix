@@ -60,10 +60,11 @@ class qp
     {
         error_reporting(E_ALL ^ E_NOTICE ^ E_DEPRECATED);
 
-        $this->all_dirs = $this->load_dirs('.');
-
         $setup = $this->determine_mode();
         $result = $this->{'qp_' . $setup['mode']}($setup['dir'], $setup['file']);
+
+        $this->all_dirs = $this->load_dirs('.');
+
         $this->output($result);
     }
 
@@ -100,6 +101,8 @@ class qp
 
         if ($data['dir'])
             $data['dir'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['dir']);
+        else
+            $data['dir'] = '.';
 
         return array('mode' => $mode, 'dir' => $data['dir'], 'file' => $data['file']);
     }
@@ -333,83 +336,55 @@ class qp
      */
     function qp_update($dir, $file)
     {
-        if(!ALLOW_UPDATE)
+        if(!ALLOW_UPDATE || !is_dir($dir))
         {
             header("Location: .");
             exit;
         }
 
-        if (is_dir($dir))
+        $cache = util::combine($dir, '.info');
+        $info = file_exists($cache)
+            ? json_decode(file_get_contents($cache), true)
+            : array('dirs' => array(), 'files' => array());
+
+        $contents = scandir($dir);
+        foreach($contents as $curr)
         {
-            //update directories
-            $cache = util::combine($dir, '.dirs');
-            if (file_exists($file))
+            if($curr == '..' || $curr == '.')
+                continue;
+
+            $path = util::combine($dir, $curr);
+            if(is_dir($path))
             {
-                $dirs = file($cache);
-                foreach ($dirs as $nm => $val)
-                    $dirs[$nm] = explode("::", trim($val));
+                if(is_array($info['dirs'][$curr]))
+                    $info['dirs'][$curr]['checked'] = true;
+                else
+                    $info['dirs'][$curr] = array('caption' => '', 'files' => 0, 'checked' => true);
             }
-
-            $content = "";
-            if ($handle = opendir($dir))
+            elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
             {
-                while (($curr = readdir($handle)) !== false)
-                {
-                    $temp = util::combine($dir, $curr);
-                    if (is_dir($temp) && $curr != '.' && $curr != '..')
-                    {
-                        // check if .hidden file is not present
-                        if (!file_exists(util::combine($temp, '.hidden')))
-                        {
-                            $oldname = '';
-                            foreach ($dirs as $val)
-                            {
-                                if (!strcasecmp($val[0], $curr))
-                                {
-                                    $oldname = $val[2];
-                                    break;
-                                }
-                            }
-
-                            $content .= $curr . '::' . $this->count_files($temp) . '::' . $oldname . "\n";
-                        }
-                    }
-                }
+                if(is_array($info['files'][$curr]))
+                    $info['files'][$curr]['checked'] = true;
+                else
+                    $info['files'][$curr] = array('caption' => '', 'checked' => true);
             }
-
-            file_put_contents($cache, $content);
-
-            // update files
-            $cache = util::combine($dir, '.files');
-            if (file_exists($file))
-            {
-                $files = file($cache);
-                foreach ($files as $nm => $val)
-                    $files[$nm] = explode("::", trim($val));
-            }
-
-            $content = "";
-            if ($handle = opendir($dir))
-            {
-                while (($curr = readdir($handle)) !== false)
-                {
-                    $oldname = '';
-                    foreach ($files as $nm => $val)
-                    {
-                        if (!strcasecmp($val[0], $curr))
-                        {
-                            $oldname = $val[1];
-                            break;
-                        }
-                    }
-
-                    $content .= $curr . '::' . $oldname . "\n";
-                }
-            }
-
-            file_put_contents($cache, $content);
         }
 
+        var_dump($info);
+
+        // remove unneeded entries
+        foreach($info as $kind => $list)
+        {
+            foreach($list as $record => $values)
+            {
+                if($values['checked'])
+                    unset($info[$kind][$record]['checked']);
+                else
+                    unset($info[$kind][$record]);
+            }
+        }
+
+        file_put_contents($cache, json_encode($info, JSON_PRETTY_PRINT));
         header("Location: .");
     }
 
@@ -552,11 +527,11 @@ class qp
             $path = util::combine($dir, $curr);
             if(is_dir($path))
                 $info['dirs'][$curr] = array('caption' => '', 'files' => 0);
-            else if(is_file($path))
+            elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
                 $files['files'][$curr] = array('caption' => '');
         }
 
-        file_put_contents($cache, json_encode($info));
+        file_put_contents($cache, json_encode($info, JSON_PRETTY_PRINT));
         return $info;
     }
 
@@ -583,7 +558,7 @@ class qp
                 continue;
 
             $path = util::combine($dir, $curr);
-            if(is_file($path))
+            if(is_file($path) && util::has_extension($path, util::image_extensions()))
                 $count++;
         }
 
@@ -940,7 +915,7 @@ class util
     {
         $args = func_get_args();
         foreach($args as $id => $arg)
-            $args[$id] = trim($arg, ' \s\t/\\');
+            $args[$id] = trim($arg, " \t\n\r\0\x0B/\\");
 
         return implode('/', $args);
     }
@@ -981,10 +956,17 @@ class util
      * Checks if a string ends with another string.
      * @param $str string Haystack.
      * @param $substr string Needle.
+     * @param $case bool Checks if the comparison must be case-sensitive.
      * @return bool
      */
-    public static function ends_with($str, $substr)
+    public static function ends_with($str, $substr, $case = true)
     {
+        if(!$case)
+        {
+            $str = strtolower($str);
+            $substr = strtolower($substr);
+        }
+
         $strlen = strlen($str);
         $sublen = strlen($substr);
         return $strlen >= $sublen && substr($str, -$sublen) == $substr;
@@ -1003,6 +985,16 @@ class util
                 return $arg;
 
         return null;
+    }
+
+    /**
+     * Returns the list of known image extensions.
+     *
+     * @return array
+     */
+    public static function image_extensions()
+    {
+        return array("jpg", "jpeg");
     }
 }
 
