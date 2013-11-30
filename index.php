@@ -62,9 +62,6 @@ class qp
 
         $setup = $this->determine_mode();
         $result = $this->{'qp_' . $setup['mode']}($setup['dir'], $setup['file']);
-
-        $this->all_dirs = $this->load_dirs('.');
-
         $this->output($result);
     }
 
@@ -78,7 +75,7 @@ class qp
         $q = $_SERVER['REDIRECT_QUERY_STRING'];
         $data = array();
 
-        if (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.[sm]$/i', $q, $data))
+        if (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+\.[sm])$/i', $q, $data))
             $mode = 'preview';
 
         elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.view$/i', $q, $data))
@@ -121,7 +118,7 @@ class qp
     function qp_dir($dir, $file)
     {
         if (!is_dir($dir))
-            return '<div class="errormsg">Directory not found!</div>';
+            return '<div class="errormsg">Directory does not exist!</div>';
 
         $info = $this->scan_dir($dir);
         $return = '';
@@ -255,7 +252,7 @@ class qp
   <div class="block">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td class="header">' . $this->breadcrumb($dir) . ' &raquo; ' . $file . '</td>
+        <td class="header">' . $this->breadcrumb($dir, $file) . '</td>
       </tr>
       <tr>
         <td class="text cell" align="center" valign="center"><br>
@@ -264,7 +261,7 @@ class qp
             <tr>
               <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . util::coalesce(trim($info['files'][$prev]['caption']), $prev) . '</a></nobr>' : '&nbsp;') . '</td>
               <td class="text" width="400" align="center">' . $info['files'][$filename]['descr'] . '</td>
-              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . util::coalesce(trim($info['files'][$next]['caption']), $next) . '.jpg</a> &raquo;</nobr>' : '&nbsp;') . '</td>
+              <td class="text" width="120" align="center">' . ($next ? '<nobr><a title="Next picture" id="link_next" href="' . $next . '.view">' . util::coalesce(trim($info['files'][$next]['caption']), $next) . '</a> &raquo;</nobr>' : '&nbsp;') . '</td>
             </tr>
           <table>
         </td>
@@ -370,8 +367,6 @@ class qp
             }
         }
 
-        var_dump($info);
-
         // remove unneeded entries
         foreach($info as $kind => $list)
         {
@@ -433,6 +428,19 @@ class qp
     // ================================================================================
 
     /**
+     * Returns a cached list of all directories available to the gallery.
+     *
+     * @return mixed The list of all directories.
+     */
+    function get_all_dirs()
+    {
+        if(!$this->all_dirs)
+            $this->all_dirs = $this->load_dirs('.');
+
+        return $this->all_dirs;
+    }
+
+    /**
      * Loads data from a pre-cached .dirs file.
      *
      * @param $from string Path to directory.
@@ -459,16 +467,19 @@ class qp
     /**
      * Generates breadcrumb HTML code string for current folder and/or path.
      *
-     * @param $query string Current query.
-     * @return string HTML code.
+     * @param $dir string Directory path.
+     * @param $file mixed File name, if any.
+     * @return string HTML code to output.
      */
-    function breadcrumb($query)
+    function breadcrumb($dir, $file = false)
     {
-        $pieces = explode("/", $query);
-        $folder = $this->all_dirs;
-        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . '/">' . TITLE . '</a>';
+        $pieces = explode("/", $dir);
+        $count = count($pieces);
+        $folder = $this->get_all_dirs();
+        $result = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . '">' . TITLE . '</a>';
         $path = '';
-        for ($idx = 0; $idx < count($pieces); $idx++)
+
+        for ($idx = 0; $idx < $count; $idx++)
         {
             if (!$folder)
                 continue;
@@ -478,14 +489,22 @@ class qp
                 if (!strcasecmp($key, $pieces[$idx]))
                 {
                     $path .= '/' . $key;
-                    $crumb .= ' &raquo; <a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . util::coalesce(trim($val['caption']), $key) . '</a>';
+
+                    $crumb = util::coalesce(trim($val['caption']), $key);
+                    if($idx < $count - 1 || $file)
+                        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . $crumb . '</a>';
+
+                    $result .= ' &raquo; ' . $crumb;
                     $folder = $val['subs'];
                     break;
                 }
             }
         }
 
-        return $crumb;
+        if($file)
+            $result .= ' &raquo; ' . $file;
+
+        return $result;
     }
 
     /**
@@ -519,16 +538,19 @@ class qp
 
         $info = array('files' => array(), 'dirs' => array());
 
-        foreach(scandir($dir) as $curr)
+        $contents = scandir($dir);
+        foreach($contents as $curr)
         {
             if($curr == '.' || $curr == '..')
                 continue;
 
             $path = util::combine($dir, $curr);
+
             if(is_dir($path))
-                $info['dirs'][$curr] = array('caption' => '', 'files' => 0);
+                $info['dirs'][$curr] = array('caption' => '', 'files' => $this->count_files($path));
+
             elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
-                $files['files'][$curr] = array('caption' => '');
+                $info['files'][$curr] = array('caption' => '');
         }
 
         file_put_contents($cache, json_encode($info, JSON_PRETTY_PRINT));
@@ -546,7 +568,7 @@ class qp
         $cache = util::combine($dir, '.info');
         if (file_exists($cache))
         {
-            $info = json_decode(file_get_contents($cache));
+            $info = json_decode(file_get_contents($cache), true);
             return count($info['files']);
         }
 
@@ -878,7 +900,7 @@ class qp
                     <td class="text cell">';
 
         // output trees
-        $this->output_tree('', $this->all_dirs);
+        $this->output_tree('', $this->get_all_dirs());
 
         echo '
                       </td>
