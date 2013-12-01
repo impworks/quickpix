@@ -252,11 +252,11 @@ class qp
   <div class="block">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td class="header">' . $this->breadcrumb($dir, $file) . '</td>
+        <td class="header">' . $this->breadcrumb($dir, util::coalesce($info['files'][$filename]['caption'], $file)) . '</td>
       </tr>
       <tr>
         <td class="text cell" align="center" valign="center"><br>
-          <a href="' . $path . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br><br>
+          <a href="' . $file . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br><br>
           <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
             <tr>
               <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . util::coalesce(trim($info['files'][$prev]['caption']), $prev) . '</a></nobr>' : '&nbsp;') . '</td>
@@ -363,7 +363,7 @@ class qp
                 if(is_array($info['files'][$curr]))
                     $info['files'][$curr]['checked'] = true;
                 else
-                    $info['files'][$curr] = array('caption' => '', 'checked' => true);
+                    $info['files'][$curr] = array('caption' => '', 'descr' => '', 'checked' => true);
             }
         }
 
@@ -550,7 +550,7 @@ class qp
                 $info['dirs'][$curr] = array('caption' => '', 'files' => $this->count_files($path));
 
             elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
-                $info['files'][$curr] = array('caption' => '');
+                $info['files'][$curr] = array('caption' => '', 'descr' => '');
         }
 
         file_put_contents($cache, json_encode($info, JSON_PRETTY_PRINT));
