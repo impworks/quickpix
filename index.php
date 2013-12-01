@@ -318,7 +318,7 @@ class qp
         $zip->open(util::combine($dir, $filename), ZipArchive::CREATE);
 
         foreach ($info['files'] as $name => $_)
-            $zip->addFile(util::combine($dir, $name));
+            $zip->addFile(util::combine($dir, $name), $name);
 
         $zip->close();
 
