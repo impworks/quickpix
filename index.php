@@ -153,7 +153,7 @@ class qp
                     $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
 
                     if ($curr < $items)
-                        $return .= '<div class="folder">' . ($subdir['files'] ? '<a href="' . $dirname . '/">' . $subdir['files'] . '</a>' : '') . '</div><br><a href="' . $dirname . '/">' . (trim($subdir['caption']) ? $subdir['caption'] : $dirname) . '</a>';
+                        $return .= '<div class="folder">' . ($subdir['files'] ? '<a href="' . $dirname . '/">' . $subdir['files'] . '</a>' : '') . '</div><br /><a href="' . $dirname . '/">' . (trim($subdir['caption']) ? $subdir['caption'] : $dirname) . '</a>';
 
                     $return .= '</td>';
 
@@ -173,8 +173,6 @@ class qp
 
         if ($info['files'])
         {
-            if ($info['dirs']) $return .= '<br><br>';
-
             $dirname = util::pathinfo($dir, 'basename');
 
             $return .= '
@@ -203,7 +201,7 @@ class qp
                     {
                         $filename = $filenames[$curr];
                         $file = $info['files'][$filename];
-                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br>' . util::coalesce(trim($file['caption']), $filename) . '</a>';
+                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br />' . util::coalesce(trim($file['caption']), $filename) . '</a>';
                     }
                     $return .= '</td>';
 
@@ -255,8 +253,8 @@ class qp
         <td class="header">' . $this->breadcrumb($dir, util::coalesce($info['files'][$filename]['caption'], $file)) . '</td>
       </tr>
       <tr>
-        <td class="text cell" align="center" valign="center"><br>
-          <a href="' . $file . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br><br>
+        <td class="text cell" align="center" valign="center"><br />
+          <a href="' . $file . '"><img src="' . $file . '.m" border="0" title="View full picture"></a><br /><br />
           <table cellpadding="10" cellspacing="0" border="1" class="pic-info" bordercolor="#999999">
             <tr>
               <td class="text" width="120" align="center">' . ($prev ? '<nobr>&laquo; <a title="Previous picture" id="link_prev" href="' . $prev . '.view">' . util::coalesce(trim($info['files'][$prev]['caption']), $prev) . '</a></nobr>' : '&nbsp;') . '</td>
@@ -492,7 +490,7 @@ class qp
 
                     $crumb = util::coalesce(trim($val['caption']), $key);
                     if($idx < $count - 1 || $file)
-                        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . $path . '/">' . $crumb . '</a>';
+                        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . util::combine(ROOT_DIR, $path) . '/">' . $crumb . '</a>';
 
                     $result .= ' &raquo; ' . $crumb;
                     $folder = $val['subs'];
@@ -796,9 +794,13 @@ class qp
         border: 1px #666688 solid;
         padding: 0px;
         width: 100%;
-        margin-bottom: 24px;
         display: block;
         position: relative;
+      }
+
+      .block:not(:first-child)
+      {
+        margin-top: 16px;
       }
 
       .header
