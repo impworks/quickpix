@@ -356,9 +356,9 @@ class qp
                 if(is_array($info['dirs'][$curr]))
                     $info['dirs'][$curr]['checked'] = true;
                 else
-                    $info['dirs'][$curr] = array('caption' => '', 'files' => 0, 'checked' => true);
+                    $info['dirs'][$curr] = array('caption' => '', 'files' => $this->count_files($path), 'checked' => true);
             }
-            elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
+            elseif(is_file($path) && util::has_extension($path, $this->image_extensions()))
             {
                 if(is_array($info['files'][$curr]))
                     $info['files'][$curr]['checked'] = true;
@@ -549,7 +549,7 @@ class qp
             if(is_dir($path))
                 $info['dirs'][$curr] = array('caption' => '', 'files' => $this->count_files($path));
 
-            elseif(is_file($path) && util::has_extension($path, util::image_extensions()))
+            elseif(is_file($path) && util::has_extension($path, $this->image_extensions()))
                 $info['files'][$curr] = array('caption' => '', 'descr' => '');
         }
 
@@ -580,7 +580,7 @@ class qp
                 continue;
 
             $path = util::combine($dir, $curr);
-            if(is_file($path) && util::has_extension($path, util::image_extensions()))
+            if(is_file($path) && util::has_extension($path, $this->image_extensions()))
                 $count++;
         }
 
@@ -636,13 +636,17 @@ class qp
      *
      * @param $src string Path to source image.
      * @param $dest string Path to destination image.
+     * @return bool Success flag.
      */
     function make_preview($src, $dest)
     {
         $size = 640;
 
         list($x, $y) = getimagesize($src);
-        $imgsrc = imagecreatefromjpeg($src);
+        $imgsrc = $this->load_image($src);
+
+        if(!$imgsrc)
+            return false;
 
         if ($x > $y)
         {
@@ -658,6 +662,8 @@ class qp
         $imgdest = imagecreatetruecolor($newx, $newy);
         imagecopyresampled($imgdest, $imgsrc, 0, 0, 0, 0, $newx, $newy, $x, $y);
         imagejpeg($imgdest, $dest);
+
+        return false;
     }
 
     /**
@@ -666,13 +672,17 @@ class qp
      *
      * @param $src string Path to source image.
      * @param $dest string Path to destination image.
+     * @return bool Success flag.
      */
     function make_thumb($src, $dest)
     {
         $size = 120;
 
         list($x, $y) = getimagesize($src);
-        $imgsrc = imagecreatefromjpeg($src);
+        $imgsrc = $this->load_image($src);
+
+        if(!$imgsrc)
+            return false;
 
         $srcsize = min($x, $y);
         if($x > $y)
@@ -689,6 +699,38 @@ class qp
         $imgdest = imagecreatetruecolor($size, $size);
         imagecopyresampled($imgdest, $imgsrc, 0, 0, $xoff, $yoff, $size, $size, $srcsize, $srcsize);
         imagejpeg($imgdest, $dest);
+
+        return true;
+    }
+
+    /**
+     * Creates an image from the path.
+     *
+     * @param $path string Image path.
+     * @return null|resource Image
+     */
+    function load_image($path)
+    {
+        if(util::has_extension($path, array("jpeg", "jpg")))
+            return imagecreatefromjpeg($path);
+
+        if(util::has_extension($path, "png"))
+            return imagecreatefrompng($path);
+
+        if(util::has_extension($path, "gif"))
+            return imagecreatefromgif($path);
+
+        return null;
+    }
+
+    /**
+     * Returns the list of known image extensions.
+     *
+     * @return array
+     */
+    public static function image_extensions()
+    {
+        return array("jpg", "jpeg", "png", "gif");
     }
 
     // ================================================================================
@@ -817,7 +859,11 @@ class qp
         display: block;
         white-space: nowrap;
         clear: both;
-        margin-bottom: 2px;
+      }
+
+      .pck-header:not(:first-child)
+      {
+        margin-top: 4px;
       }
       
       .pck-menu
@@ -1007,16 +1053,6 @@ class util
                 return $arg;
 
         return null;
-    }
-
-    /**
-     * Returns the list of known image extensions.
-     *
-     * @return array
-     */
-    public static function image_extensions()
-    {
-        return array("jpg", "jpeg");
     }
 }
 
