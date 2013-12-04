@@ -118,7 +118,7 @@ class qp
     function qp_dir($dir, $file)
     {
         if (!is_dir($dir))
-            return '<div class="errormsg">Directory does not exist!</div>';
+            return '<div class="error-msg">Directory does not exist!</div>';
 
         $info = $this->scan_dir($dir);
         $return = '';
@@ -153,7 +153,14 @@ class qp
                     $return .= '<td class="cell text" width="' . $space . '%" align="center" valign="middle">';
 
                     if ($curr < $items)
-                        $return .= '<div class="folder">' . ($subdir['files'] ? '<a href="' . $dirname . '/">' . $subdir['files'] . '</a>' : '') . '</div><br /><a href="' . $dirname . '/">' . (trim($subdir['caption']) ? $subdir['caption'] : $dirname) . '</a>';
+                    {
+                        $return .= '<div class="folder thumb">';
+
+                        foreach($this->get_folder_thumbnails(util::combine($dir, $dirname)) as $thumb)
+                            $return .= '<a href="' . $dirname . '/"><img src="' . util::combine($dirname, $thumb) . '.s" class="folder-thumb" /></a>';
+
+                        $return .= '</div><a href="' . $dirname . '/">' . util::coalesce(trim($subdir['caption']), $dirname) . '</a>';
+                    }
 
                     $return .= '</td>';
 
@@ -201,7 +208,7 @@ class qp
                     {
                         $filename = $filenames[$curr];
                         $file = $info['files'][$filename];
-                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0"><br />' . util::coalesce(trim($file['caption']), $filename) . '</a>';
+                        $return .= '<a href="' . $filename . '.view"><img src="' . $filename . '.s" border="0" class="thumb"><br />' . util::coalesce(trim($file['caption']), $filename) . '</a>';
                     }
                     $return .= '</td>';
 
@@ -220,7 +227,7 @@ class qp
         }
 
         if (!$info['dirs'] && !$info['files'])
-            return '<div class="errormsg">Directory is empty!</div>';
+            return '<div class="error-msg">Directory is empty!</div>';
 
         return $return;
     }
@@ -238,7 +245,7 @@ class qp
         $path = util::combine($dir, $filename);
 
         if (!file_exists($path))
-            return '<div class="errormsg">File does not exist!</div>';
+            return '<div class="error-msg">File does not exist!</div>';
 
         $info = $this->scan_dir($dir);
         $filenames = array_keys($info['files']);
@@ -307,7 +314,7 @@ class qp
         }
 
         if (!is_dir($dir))
-            return '<div class="errormsg">Directory not found!</div>';
+            return '<div class="error-msg">Directory not found!</div>';
 
         $filename = util::pathinfo($dir . '/', 'basename') . '.zip';
         $info = $this->scan_dir($dir);
@@ -418,7 +425,7 @@ class qp
      */
     function qp_wtf()
     {
-        return '<div class="errormsg"><marquee><span style="font-size: 72px;">WUT?!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#3232;___&#3232;</span></marquee></div>';
+        return '<div class="error-msg"><marquee><span style="font-size: 72px;">WUT?!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#3232;___&#3232;</span></marquee></div>';
     }
 
     // ================================================================================
@@ -446,14 +453,13 @@ class qp
      */
     function load_dirs($from)
     {
-        $cache = util::combine($from, ".info");
-        if (!file_exists($cache))
+        $cache = $this->get_cache($from);
+        if(!$cache)
             return false;
 
-        $data = json_decode(file_get_contents($cache), true);
         $result = array();
 
-        foreach ($data['dirs'] as $key => $val)
+        foreach ($cache['dirs'] as $key => $val)
         {
             $result[$key] = $val;
             $result[$key]['subs'] = $this->load_dirs(util::combine($from, $key));
@@ -514,7 +520,7 @@ class qp
     function file_generic($file)
     {
         if (!file_exists($file))
-            return '<div class="errormsg">File does not exist!</div>';
+            return '<div class="error-msg">File does not exist!</div>';
 
         header("Content-Type: image/jpeg");
         readfile($file);
@@ -529,10 +535,9 @@ class qp
      */
     function scan_dir($dir)
     {
-        $cache = util::combine($dir, '.info');
-
-        if(file_exists($cache))
-            return json_decode(file_get_contents($cache), true);
+        $cache = $this->get_cache($dir);
+        if($cache)
+            return $cache;
 
         $info = array('files' => array(), 'dirs' => array());
 
@@ -551,7 +556,7 @@ class qp
                 $info['files'][$curr] = array('caption' => '', 'descr' => '');
         }
 
-        file_put_contents($cache, json_encode($info, JSON_PRETTY_PRINT));
+        file_put_contents(util::combine($dir, '.info'), json_encode($info, JSON_PRETTY_PRINT));
         return $info;
     }
 
@@ -563,12 +568,9 @@ class qp
      */
     function count_files($dir)
     {
-        $cache = util::combine($dir, '.info');
-        if (file_exists($cache))
-        {
-            $info = json_decode(file_get_contents($cache), true);
-            return count($info['files']);
-        }
+        $cache = $this->get_cache($dir);
+        if($cache)
+            return count($cache['files']);
 
         $count = 0;
 
@@ -594,22 +596,23 @@ class qp
      */
     function output_tree($root, $data, $depth = 0)
     {
-        if (is_array($data) && count($data))
+        if (!is_array($data) || !count($data))
         {
-            foreach ($data as $key => $val)
-            {
-                echo '<div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a></div>';
-                if (is_array($val['subs']))
-                {
-                    echo '<div class="pck-sub pck-hidden">';
-                    $this->output_tree($root . $key . '/', $val['subs'], $depth+1);
-                    echo '</div>';
-                }
-            }
+            if($depth == 0)
+                echo '<div class="error-msg">Directory is empty!</div>';
+
+            return;
         }
-        else
+
+        foreach ($data as $key => $val)
         {
-            echo '<div class="errormsg">Directory is empty!</div>';
+            echo '<div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a></div>';
+            if (!is_array($val['subs']) || !count($val['subs']))
+                continue;
+
+            echo '<div class="pck-sub">';
+            $this->output_tree($root . $key . '/', $val['subs'], $depth+1);
+            echo '</div>';
         }
     }
 
@@ -622,6 +625,61 @@ class qp
     private function get_filename($query)
     {
         return preg_replace('/\.(m|s|view)$/i', '', trim($query));
+    }
+
+    /**
+     * Loads image thumbnails for a folder.
+     *
+     * @param $dir
+     * @return array Up to 4 image thumbnails.
+     */
+    private function get_folder_thumbnails($dir)
+    {
+        $max = 4;
+        $idx = 0;
+
+        $cache = $this->get_cache($dir);
+        $imgs = array();
+
+        if($cache)
+        {
+            foreach($cache['files'] as $key => $info)
+            {
+                $imgs[] = $key;
+                if(++$idx >= $max)
+                    break;
+            }
+        }
+        else
+        {
+            if($handle = opendir($dir))
+            {
+                while(($curr = readdir($handle)) !== false)
+                {
+                    $path = util::combine($dir, $curr);
+                    if($curr == '.' || $curr == '..' || is_dir($path) || !util::has_extension($curr, $this->image_extensions()))
+                        continue;
+
+                    $imgs[] = $curr;
+                    if(++$idx >= $max)
+                        break;
+                }
+            }
+        }
+
+        return $imgs;
+    }
+
+    /**
+     * Attempts to load cache from a directory.
+     *
+     * @param $dir string Directory path
+     * @return mixed|null Cache
+     */
+    private function get_cache($dir)
+    {
+        $path = util::combine($dir, '.info');
+        return file_exists($path) ? json_decode(file_get_contents($path), true) : null;
     }
 
     // ================================================================================
@@ -780,15 +838,6 @@ class qp
 
     </script>
     <style>
-      
-      .pck-header a
-      {
-        text-decoration: none;
-        color: #000000;
-        display: block;
-        padding: 4px;
-      }
-      
       .block
       {
         border: 1px #666688 solid;
@@ -825,7 +874,7 @@ class qp
         padding: 4px;
       }
 
-      .smalltext
+      .text-small
       {
         font-family: Verdana;
         font-size: 9px;
@@ -833,17 +882,7 @@ class qp
         background-color: #FFFFFF;
       }
 
-      .okmsg
-      {
-        font-family: Verdana;
-        font-size: 10px;
-        color: #000000;
-        background-color: #96FF96;
-        border: 1px #029801 solid;
-        padding: 6px;
-      }
-
-      .errormsg
+      .error-msg
       {
         font-family: Verdana;
         font-size: 10px;
@@ -867,6 +906,14 @@ class qp
       {
         margin-top: 4px;
       }
+
+      .pck-header a
+      {
+        text-decoration: none;
+        color: #000000;
+        display: block;
+        padding: 4px;
+      }
       
       .pck-menu
       {
@@ -882,9 +929,8 @@ class qp
 
       .pck-sub
       {
-        padding: 0px;
-        padding-left: 16px;
-        border: 0px;
+        padding: 4px 0 0 16px;
+        border: 0;
       }
 
       .pck-branch
@@ -899,11 +945,6 @@ class qp
         background-color: #C8D5E8;
       }
       
-      .pck-hidden
-      {
-        display: none;
-      }
-      
       .pic-info
       {
         border-collapse: collapse;
@@ -913,20 +954,27 @@ class qp
 
       .folder
       {
-        width: 120px;
-        height: 120px;
-        padding-top: 10px;
         border: 2px #CCCCCC solid;
-        text-align: center;
-        font-weight: bold;
-        font-size: 24pt;
-        color: #CCCCCC;
+        padding: 0 4px 4px 0;
       }
 
       .folder a
       {
-        color: #CCCCCC;
-        text-decoration: none;
+        margin: 4px 0 0 4px;
+        display: inline-block;
+      }
+
+      .folder-thumb
+      {
+        width: 56px;
+        height: 56px;
+      }
+
+      .thumb
+      {
+        margin-bottom: 4px;
+        width: 120px;
+        height: 120px;
       }
 
     </style>
@@ -942,7 +990,7 @@ class qp
               <div class="block">
                 <table cellpadding="0" cellspacing="0" border="0" width="100%"> 
                   <tr>
-                    <td class="header">Folders</td>
+                    <td class="header"><a href="' . ROOT_DIR . '">' . TITLE . '</a></td>
                   </tr>
                   <tr>
                     <td class="text cell">';
