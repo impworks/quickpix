@@ -72,25 +72,25 @@ class qp
      */
     function determine_mode()
     {
-        $q = $_SERVER['REDIRECT_QUERY_STRING'];
+        $q = $_SERVER['REQUEST_URI'];
         $data = array();
 
-        if (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+\.[sm])$/i', $q, $data))
+        if (preg_match('/^\/(?<dir>.*?)\/(?<file>[^\/]+\.[sm])$/i', $q, $data))
             $mode = 'preview';
 
-        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.view$/i', $q, $data))
+        elseif (preg_match('/^\/(?<dir>.*?)\/(?<file>[^\/]+)\.view$/i', $q, $data))
             $mode = 'view';
 
-        elseif (preg_match('/^(?<dir>.*?)\.update$/i', $q, $data))
+        elseif (preg_match('/^\/(?<dir>.*?)\?update$/i', $q, $data))
             $mode = 'update';
 
-        elseif (preg_match('/^(?<dir>.*?)\.clean/i', $q, $data))
+        elseif (preg_match('/^\/(?<dir>.*?)\?clean/i', $q, $data))
             $mode = 'clean';
 
-        elseif (preg_match('/^(?<dir>.*?)\/(?<file>[^\/]+)\.zip$/i', $q, $data))
+        elseif (preg_match('/^\/(?<dir>.*?)\/(?<file>[^\/]+)\.zip$/i', $q, $data))
             $mode = 'zip';
 
-        elseif (preg_match('/^(?<dir>.*?)\/?$/i', $q, $data))
+        elseif (preg_match('/^\/(?<dir>.*?)\/?$/i', $q, $data))
             $mode = 'dir';
 
         else
