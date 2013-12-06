@@ -14,7 +14,7 @@ Features:
 
 ### Requirements
 
-* PHP 5.2+ with GD extension
+* PHP 5.4+ with GD extension
 * Apache with mod_rewrite
 * Write access to directory folder
  
