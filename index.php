@@ -157,7 +157,7 @@ class qp
                         $return .= '<div class="folder thumb">';
 
                         foreach($this->get_folder_thumbnails(util::combine($dir, $dirname)) as $thumb)
-                            $return .= '<a href="' . $dirname . '/"><img src="' . util::combine($dirname, $thumb) . '.s" class="folder-thumb" /></a>';
+                            $return .= '<a href="' . $dirname . '/"><img src="' . ROOT_DIR . $thumb . '.s" class="folder-thumb" /></a>';
 
                         $return .= '</div><a href="' . $dirname . '/">' . util::coalesce(trim($subdir['caption']), $dirname) . '</a>';
                     }
@@ -645,29 +645,43 @@ class qp
         {
             foreach($cache['files'] as $key => $info)
             {
-                $imgs[] = $key;
+                $imgs[] = util::combine($dir, $key);
                 if(++$idx >= $max)
                     break;
             }
+
+            $subdirs = array_keys($cache['dirs']);
+            $subdir = count($subdirs) ? util::combine($dir, $subdirs[0]) : null;
         }
         else
         {
+            $subdir = null;
             if($handle = opendir($dir))
             {
                 while(($curr = readdir($handle)) !== false)
                 {
                     $path = util::combine($dir, $curr);
-                    if($curr == '.' || $curr == '..' || is_dir($path) || !util::has_extension($curr, $this->image_extensions()))
+                    if($curr == '.' || $curr == '..')
                         continue;
 
-                    $imgs[] = $curr;
+                    if(is_dir($path))
+                    {
+                        if($subdir === null)
+                            $subdir = $path;
+                        continue;
+                    }
+
+                    if(!util::has_extension($curr, $this->image_extensions()))
+                        continue;
+
+                    $imgs[] = util::combine($dir, $curr);
                     if(++$idx >= $max)
                         break;
                 }
             }
         }
 
-        return $imgs;
+        return !count($imgs) && $dir !== null ? $this->get_folder_thumbnails($subdir) : $imgs;
     }
 
     /**
@@ -719,7 +733,7 @@ class qp
         imagecopyresampled($imgdest, $imgsrc, 0, 0, 0, 0, $newx, $newy, $x, $y);
         imagejpeg($imgdest, $dest);
 
-        return false;
+        return true;
     }
 
     /**
@@ -1032,6 +1046,10 @@ class util
     public static function combine()
     {
         $args = func_get_args();
+        if(!is_array($args) || !count($args))
+            return '';
+
+        $args[0] = str_replace('./', '', $args[0]);
         foreach($args as $id => $arg)
             $args[$id] = trim($arg, " \t\n\r\0\x0B/\\");
 
