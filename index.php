@@ -62,7 +62,7 @@ class qp
 
         $setup = $this->determine_mode();
         $result = $this->{'qp_' . $setup['mode']}($setup['dir'], $setup['file']);
-        $this->output($result);
+        $this->output($result, $setup['dir']);
     }
 
     /**
@@ -592,9 +592,10 @@ class qp
      *
      * @param $root string The base folder for current one.
      * @param $data mixed Current tree node.
+     * @param $path_parts array Parts of current path.
      * @param $depth int Depth index
      */
-    function output_tree($root, $data, $depth = 0)
+    function output_tree($root, $data, $path_parts, $depth = 0)
     {
         if (!is_array($data) || !count($data))
         {
@@ -606,12 +607,20 @@ class qp
 
         foreach ($data as $key => $val)
         {
-            echo '<div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '"><div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div><a href="http://' . $_SERVER['HTTP_HOST'] . '/' . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a></div>';
+            echo '
+    <div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '">
+        <div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div>
+        <a href="' . ROOT_DIR . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a>
+    </div>';
+
             if (!is_array($val['subs']) || !count($val['subs']))
                 continue;
 
+            if($path_parts[$depth] != $key)
+                continue;
+
             echo '<div class="pck-sub">';
-            $this->output_tree($root . $key . '/', $val['subs'], $depth+1);
+            $this->output_tree($root . $key . '/', $val['subs'], $path_parts, $depth+1);
             echo '</div>';
         }
     }
@@ -811,8 +820,9 @@ class qp
      * Outputs the general frame of the gallery.
      *
      * @param $result string HTML code of the currently displayed item.
+     * @param $path string The current directory.
      */
-    function output($result)
+    function output($result, $path)
     {
         // head
         echo '
@@ -1010,7 +1020,7 @@ class qp
                     <td class="text cell">';
 
         // output trees
-        $this->output_tree('', $this->get_all_dirs());
+        $this->output_tree('', $this->get_all_dirs(), explode('/', $path));
 
         echo '
                       </td>
