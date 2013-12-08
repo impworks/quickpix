@@ -1,10 +1,11 @@
+AddDefaultCharset UTF-8
 Options -Indexes
 
 AddType image/jpeg .s
 AddType image/jpeg .m
 
 RewriteEngine On
-RewriteBase /photos
+RewriteBase /
 
 RewriteRule ^(.*?)(\.(dirs|files))$ index.php?$1
 

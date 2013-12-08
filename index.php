@@ -350,6 +350,7 @@ class qp
             : array('dirs' => array(), 'files' => array());
 
         $contents = scandir($dir);
+        asort($contents);
         foreach($contents as $curr)
         {
             if($curr == '..' || $curr == '.')
@@ -358,6 +359,10 @@ class qp
             $path = util::combine($dir, $curr);
             if(is_dir($path))
             {
+                $hidden = util::combine($path, '.hidden');
+                if(file_exists($hidden))
+                    continue;
+
                 if(is_array($info['dirs'][$curr]))
                     $info['dirs'][$curr]['checked'] = true;
                 else
@@ -542,6 +547,7 @@ class qp
         $info = array('files' => array(), 'dirs' => array());
 
         $contents = scandir($dir);
+        asort($contents);
         foreach($contents as $curr)
         {
             if($curr == '.' || $curr == '..')
@@ -550,7 +556,13 @@ class qp
             $path = util::combine($dir, $curr);
 
             if(is_dir($path))
+            {
+                $hidden = util::combine($path, '.hidden');
+                if(file_exists($hidden))
+                    continue;
+
                 $info['dirs'][$curr] = array('caption' => '', 'files' => $this->count_files($path));
+            }
 
             elseif(is_file($path) && util::has_extension($path, $this->image_extensions()))
                 $info['files'][$curr] = array('caption' => '', 'descr' => '');
@@ -607,8 +619,11 @@ class qp
 
         foreach ($data as $key => $val)
         {
+            $is_in_path = $path_parts[$depth] == $key;
+            $is_current = $is_in_path && $depth == count($path_parts) - 1;
+
             echo '
-    <div class="pck-header ' . ($depth == 0 ? 'pck-branch' : 'pck-subbranch') . '">
+    <div class="pck-header ' . ($is_current ? 'pck-subbranch' : 'pck-branch') . '">
         <div class="pck-menu">' . ($val['files'] > 0 ? $val['files'] : '') . '</div>
         <a href="' . ROOT_DIR . $root . $key . '/' . '">' . util::coalesce(trim($val['caption']), $key) . '</a>
     </div>';
@@ -616,7 +631,7 @@ class qp
             if (!is_array($val['subs']) || !count($val['subs']))
                 continue;
 
-            if($path_parts[$depth] != $key)
+            if(!$is_in_path)
                 continue;
 
             echo '<div class="pck-sub">';
@@ -830,8 +845,7 @@ class qp
 <html>
   <head>
     <title>' . TITLE . '</title>
-    <meta http-equiv="Content-Language" content="ru" />
-    <meta http-equiv="Content-Type" content="text/html; charset=cp1251" />
+    <meta charset="utf-8" />
     <script language="javascript">
     document.onkeydown = navigate;
 
