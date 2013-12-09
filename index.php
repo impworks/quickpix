@@ -97,8 +97,13 @@ class qp
             $mode = 'wtf';
 
         if ($data['dir'])
-            $data['dir'] = preg_replace('/(\/*$|\.\.\/)/i', '', $data['dir']);
-        else
+        {
+            $data['dir'] = '/' . $data['dir'];
+            $data['dir'] = preg_replace('/(\/*$|\.\.\/|\/{2,})/i', '', $data['dir']);
+            $data['dir'] = substr($data['dir'], strlen(ROOT_DIR));
+        }
+
+        if(!$data['dir'])
             $data['dir'] = '.';
 
         return array('mode' => $mode, 'dir' => $data['dir'], 'file' => $data['file']);
@@ -485,7 +490,7 @@ class qp
         $pieces = explode("/", $dir);
         $count = count($pieces);
         $folder = $this->get_all_dirs();
-        $result = '<a href="http://' . $_SERVER['HTTP_HOST'] . ROOT_DIR . '">' . TITLE . '</a>';
+        $result = '<a href="' .  ROOT_DIR . '">' . TITLE . '</a>';
         $path = '';
 
         for ($idx = 0; $idx < $count; $idx++)
@@ -501,7 +506,7 @@ class qp
 
                     $crumb = util::coalesce(trim($val['caption']), $key);
                     if($idx < $count - 1 || $file)
-                        $crumb = '<a href="http://' . $_SERVER['HTTP_HOST'] . util::combine(ROOT_DIR, $path) . '/">' . $crumb . '</a>';
+                        $crumb = '<a href="/' . util::combine(ROOT_DIR, $path) . '/">' . $crumb . '</a>';
 
                     $result .= ' &raquo; ' . $crumb;
                     $folder = $val['subs'];
@@ -1130,6 +1135,26 @@ class util
         $strlen = strlen($str);
         $sublen = strlen($substr);
         return $strlen >= $sublen && substr($str, -$sublen) == $substr;
+    }
+
+    /**
+     * Checks if a string starts with another string.
+     * @param $str string Haystack.
+     * @param $substr string Needle.
+     * @param $case bool Checks if the comparison must be case-sensitive.
+     * @return bool
+     */
+    public static function starts_with($str, $substr, $case = true)
+    {
+        if(!$case)
+        {
+            $str = strtolower($str);
+            $substr = strtolower($substr);
+        }
+
+        $strlen = strlen($str);
+        $sublen = strlen($substr);
+        return $strlen >= $sublen && substr($str, 0, $sublen) == $substr;
     }
 
     /**
