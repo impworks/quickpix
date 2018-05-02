@@ -74,6 +74,13 @@ class qp
     {
         $q = $_SERVER['REQUEST_URI'];
         $data = array();
+        
+        // ensure trailing slash
+        if(!util::ends_with($q, '/') && strpos($q, '?') === false)
+        {
+            header('Location: ' . $q . '/');
+            exit;
+        }
 
         if (preg_match('/^\/(?<dir>.*?)\/(?<file>[^\/]+\.[sm])$/i', $q, $data))
             $mode = 'preview';
