@@ -15,20 +15,20 @@ Features:
 ### Requirements
 
 * PHP 5.4+ with GD extension
-* Apache with mod_rewrite
+* Apache with mod_rewrite (or IIS with URL Rewrite)
 * Write access to directory folder
  
 ### Installation
 
-* Copy the `index.php` and `.htaccess` files to the root of your web gallery.
+* Copy the `index.php` and `.htaccess` / `web.config` files to the root of your web gallery (depending on your server).
 * Make sure the folder has write access! Quickpix caches a lof of stuff.
-* Update the `.htaccess` file with your gallery's relative path.
+* Update the `.htaccess` / `web.config` file with your gallery's relative path.
 * Update the `index.php` file with your gallery's relative path as well, or set any other options (thoroughly commented).
 * Create folders and upload pictures. That's it!
  
 ### How to work with it
 
-Quickpix uses the file system as a single source of truth. You can think of it as `Options +Indexes` page on steroids that automatically creates thumbnails and previews for you.
+Quickpix uses the file system as a single source of truth. You can think of it as Apache's `Options +Indexes` page on steroids that automatically creates thumbnails and previews for you.
 
 When Quickpix comes across an unknown folder, it creates a `.info` file in it. It is a JSON file which you can edit in any text editor and specify titles and descriptions for some folders. Therefore, most of the manipulations are performed via the file system: adding or removing folders, files, and editing the `.info` files. If your local PC is a webserver, its even simplier!
 
